@@ -1,0 +1,32 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background-color: #fafafa;
+}
+
+.site-title {
+    border: 2px solid #e67e22;
+    color: #e67e22;
+    padding: 10px;
+    text-align: center;
+    width: 200px;
+    margin: auto;
+    margin-bottom: 30px;
+}
+
+form {
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.content {
+    display: flex;
+    justify-content: space-around;
+}
+
+.timetable, .meal {
+    width: 45%;
+    padding: 15px;
+    border: 1px solid #ccc;
+    background: #fff;
+}
