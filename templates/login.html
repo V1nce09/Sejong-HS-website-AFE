@@ -6,17 +6,16 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="container">
+    <div class="login-container">
         <h2 class="site-title">사이트 이름</h2>
-        <form method="POST">
+        <form method="POST" action="/main" class="login-form">
             <input type="text" name="userid" placeholder="아이디" required>
             <input type="password" name="password" placeholder="비밀번호" required>
-            <button type="submit" class="login-btn">로그인</button>
-            <div class="options">
-                <label>
+            <div class="login-actions">
+                <button type="submit" class="btn login-btn">로그인</button>
+                <label class="keep">
                     <input type="checkbox" name="keep_login"> 로그인 상태 유지
                 </label>
-                <a href="{{ url_for('register') }}">회원가입</a>
             </div>
         </form>
     </div>
