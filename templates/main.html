@@ -2,84 +2,201 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>세종고 통합 포털</title>
+    <title>학교 통합 시스템</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        /* 전체 레이아웃 */
+        body {
+            display: flex;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #f4f6f9;
+        }
+
+        /* 좌측 패널 */
+        .sidebar {
+            width: 18%;
+            background-color: #2c3e50;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px 10px;
+        }
+
+        .sidebar h2 {
+            color: #f39c12;
+            margin-bottom: 30px;
+        }
+
+        .sidebar select, .sidebar button {
+            width: 80%;
+            margin: 10px 0;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            font-size: 15px;
+        }
+
+        .sidebar button {
+            background-color: #f39c12;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .sidebar button:hover {
+            background-color: #d35400;
+        }
+
+        /* 중앙 메인 */
+        .main-content {
+            flex: 1;
+            background: white;
+            padding: 30px;
+            overflow-y: auto;
+        }
+
+        .timetable {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .timetable th, .timetable td {
+            border: 1px solid #ddd;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .timetable th {
+            background-color: #f39c12;
+            color: white;
+        }
+
+        .timetable td {
+            background-color: #fdfdfd;
+        }
+
+        /* 우측 패널 */
+        .sidebar-right {
+            width: 25%;
+            background-color: #ecf0f1;
+            padding: 25px;
+            overflow-y: auto;
+            border-left: 2px solid #bdc3c7;
+        }
+
+        .meal-section {
+            margin-bottom: 25px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .meal-section h3 {
+            margin-bottom: 10px;
+            color: #e67e22;
+        }
+
+        .meal-section ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .meal-section li {
+            margin-bottom: 5px;
+            line-height: 1.4em;
+        }
+
+    </style>
 </head>
 <body>
-<div class="container">
     <!-- 좌측 패널 -->
-    <aside class="sidebar">
+    <div class="sidebar">
         <h2>반 선택</h2>
-        <form id="queryForm">
-            <label>날짜<br>
-                <input type="date" id="date" name="date" required>
-            </label>
-            <label>학년<br>
-                <input type="number" id="grade" name="grade" min="1" max="3" value="1">
-            </label>
-            <label>반<br>
-                <input type="number" id="classroom" name="classroom" min="1" max="10" value="1">
-            </label>
-            <button type="submit" class="btn">조회</button>
-        </form>
-    </aside>
+        <label>학년</label>
+        <select id="grade">
+            <option value="1">1학년</option>
+            <option value="2">2학년</option>
+            <option value="3">3학년</option>
+        </select>
+        <label>반</label>
+        <select id="classroom">
+            <option value="1">1반</option>
+            <option value="2">2반</option>
+            <option value="3">3반</option>
+            <option value="4">4반</option>
+        </select>
+        <button onclick="loadData()">조회</button>
+    </div>
 
-    <!-- 중앙 -->
-    <main class="timetable-section">
-        <h2>2주간 시간표</h2>
-        <div id="timetable-container">
-            <p class="placeholder">조회 시 시간표가 표시됩니다.</p>
-        </div>
-    </main>
+    <!-- 중앙 패널 (시간표) -->
+    <div class="main-content">
+        <h2 id="timetable-title">시간표</h2>
+        <table class="timetable" id="timetable">
+            <thead>
+                <tr>
+                    <th>교시</th>
+                    <th>과목</th>
+                </tr>
+            </thead>
+            <tbody id="timetable-body">
+                <tr><td colspan="2">데이터를 불러오는 중...</td></tr>
+            </tbody>
+        </table>
+    </div>
 
-    <!-- 우측 -->
-    <aside class="meal-panel">
+    <!-- 우측 패널 (급식) -->
+    <div class="sidebar-right">
         <h2>오늘의 급식</h2>
-        <div id="meal-info">
-            <p>조회 후 급식 정보가 표시됩니다.</p>
+        <div id="meal-container">
+            <p>불러오는 중...</p>
         </div>
-    </aside>
-</div>
+    </div>
 
-<script>
-document.getElementById("queryForm").addEventListener("submit", function(e) {
-    e.preventDefault();
+    <script>
+        async function loadData() {
+            const grade = document.getElementById("grade").value;
+            const classroom = document.getElementById("classroom").value;
+            const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
+            const res = await fetch(`/api/data?grade=${grade}&classroom=${classroom}&date=${today}`);
+            const data = await res.json();
 
-    const date = document.getElementById("date").value.replaceAll("-", "");
-    const grade = document.getElementById("grade").value;
-    const classroom = document.getElementById("classroom").value;
-
-    fetch(`/api/data?date=${date}&grade=${grade}&classroom=${classroom}`)
-        .then(response => response.json())
-        .then(data => {
-            const timetableContainer = document.getElementById("timetable-container");
-            timetableContainer.innerHTML = "";
+            // 시간표 표시
+            const tbody = document.getElementById("timetable-body");
+            tbody.innerHTML = "";
             if (data.timetable.length === 0) {
-                timetableContainer.innerHTML = "<p>시간표 정보가 없습니다.</p>";
+                tbody.innerHTML = "<tr><td colspan='2'>시간표 데이터가 없습니다.</td></tr>";
             } else {
-                data.timetable.forEach(day => {
-                    const d = new Date(day.date.substring(0,4), day.date.substring(4,6)-1, day.date.substring(6,8));
-                    const dayBox = document.createElement("div");
-                    dayBox.className = "day-box";
-                    dayBox.innerHTML = `<h4>${d.getMonth()+1}월 ${d.getDate()}일</h4>`;
-                    day.timetable.forEach((subject, idx) => {
-                        dayBox.innerHTML += `<p>${idx+1}교시: ${subject}</p>`;
-                    });
-                    timetableContainer.appendChild(dayBox);
+                data.timetable.forEach((subject, idx) => {
+                    const row = `<tr><td>${idx + 1}</td><td>${subject}</td></tr>`;
+                    tbody.innerHTML += row;
                 });
             }
 
-            const mealInfo = document.getElementById("meal-info");
-            mealInfo.innerHTML = "";
-            if (data.meal.length > 0) {
-                data.meal.forEach(meal => {
-                    mealInfo.innerHTML += `<div class="meal-item"><h4>${meal.time}</h4><pre>${meal.menu}</pre></div>`;
-                });
+            // 급식 표시
+            const mealDiv = document.getElementById("meal-container");
+            mealDiv.innerHTML = "";
+            if (data.meal.length === 0) {
+                mealDiv.innerHTML = "<p>급식 정보가 없습니다.</p>";
             } else {
-                mealInfo.innerHTML = "<p>급식 정보가 없습니다.</p>";
+                data.meal.forEach(meal => {
+                    const block = `
+                        <div class="meal-section">
+                            <h3>${meal.time}</h3>
+                            <ul>${meal.menu.split('\n').map(item => `<li>${item}</li>`).join('')}</ul>
+                        </div>
+                    `;
+                    mealDiv.innerHTML += block;
+                });
             }
-        });
-});
-</script>
+        }
+
+        // 페이지 로드시 자동 로드
+        window.onload = loadData;
+    </script>
 </body>
 </html>
