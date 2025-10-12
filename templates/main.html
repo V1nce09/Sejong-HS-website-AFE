@@ -2,78 +2,22 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>메인 페이지</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>로그인</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h2 class="site-title">세종고 웹사이트</h2>
-
-    <form id="queryForm">
-        <label>날짜 선택: 
-            <input type="date" id="date" name="date">
-        </label>
-        <label>학년: 
-            <input type="number" id="grade" name="grade" min="1" max="3" value="1">
-        </label>
-        <label>반: 
-            <input type="number" id="classroom" name="classroom" min="1" max="10" value="1">
-        </label>
-        <button type="submit">조회</button>
-    </form>
-
-    <div class="content">
-        <!-- 학급 시간표 -->
-        <div class="timetable">
-            <h3 id="timetable-title">시간표</h3>
-            <table border="1" id="timetable-table">
-                <tr>
-                    <th>교시</th>
-                    <th>과목</th>
-                </tr>
-            </table>
-        </div>
-
-        <!-- 급식 -->
-        <div class="meal">
-            <h3>급식 정보</h3>
-            <div id="meal-info"></div>
-        </div>
+    <div class="login-container">
+        <h2 class="site-title">사이트 이름</h2>
+        <form method="POST" action="/main" class="login-form">
+            <input type="text" name="userid" placeholder="아이디" required>
+            <input type="password" name="password" placeholder="비밀번호" required>
+            <div class="login-actions">
+                <button type="submit" class="btn login-btn">로그인</button>
+                <label class="keep">
+                    <input type="checkbox" name="keep_login"> 로그인 상태 유지
+                </label>
+            </div>
+        </form>
     </div>
-
-    <script>
-        document.getElementById("queryForm").addEventListener("submit", function(e) {
-            e.preventDefault();
-
-            const date = document.getElementById("date").value.replaceAll("-", "");
-            const grade = document.getElementById("grade").value;
-            const classroom = document.getElementById("classroom").value;
-
-            fetch(`/api/data?date=${date}&grade=${grade}&classroom=${classroom}`)
-                .then(response => response.json())
-                .then(data => {
-                    // 시간표 출력
-                    const timetableTitle = document.getElementById("timetable-title");
-                    timetableTitle.textContent = `${data.grade}학년 ${data.classroom}반 시간표`;
-
-                    const timetableTable = document.getElementById("timetable-table");
-                    timetableTable.innerHTML = "<tr><th>교시</th><th>과목</th></tr>";
-                    data.timetable.forEach((subject, idx) => {
-                        const row = `<tr><td>${idx + 1}교시</td><td>${subject}</td></tr>`;
-                        timetableTable.innerHTML += row;
-                    });
-
-                    // 급식 출력
-                    const mealInfo = document.getElementById("meal-info");
-                    mealInfo.innerHTML = "";
-                    if (data.meal.length > 0) {
-                        data.meal.forEach(meal => {
-                            mealInfo.innerHTML += `<h4>${meal.time}</h4><pre>${meal.menu}</pre>`;
-                        });
-                    } else {
-                        mealInfo.innerHTML = "<p>급식 정보가 없습니다.</p>";
-                    }
-                });
-        });
-    </script>
 </body>
 </html>
