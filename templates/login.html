@@ -5,18 +5,16 @@
     <title>로그인</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body class="login-body">
     <div class="login-container">
-        <h2 class="site-title">사이트 이름</h2>
-        <form method="POST" action="/main" class="login-form">
+        <h2 class="site-title">세종고 포털</h2>
+        <form method="POST">
             <input type="text" name="userid" placeholder="아이디" required>
             <input type="password" name="password" placeholder="비밀번호" required>
-            <div class="login-actions">
-                <button type="submit" class="btn login-btn">로그인</button>
-                <label class="keep">
-                    <input type="checkbox" name="keep_login"> 로그인 상태 유지
-                </label>
-            </div>
+            <button type="submit" class="btn">로그인</button>
+            {% if error %}
+                <p class="error">{{ error }}</p>
+            {% endif %}
         </form>
     </div>
 </body>

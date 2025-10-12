@@ -2,22 +2,84 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>로그인</title>
+    <title>세종고 통합 포털</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="login-container">
-        <h2 class="site-title">사이트 이름</h2>
-        <form method="POST" action="/main" class="login-form">
-            <input type="text" name="userid" placeholder="아이디" required>
-            <input type="password" name="password" placeholder="비밀번호" required>
-            <div class="login-actions">
-                <button type="submit" class="btn login-btn">로그인</button>
-                <label class="keep">
-                    <input type="checkbox" name="keep_login"> 로그인 상태 유지
-                </label>
-            </div>
+<div class="container">
+    <!-- 좌측 패널 -->
+    <aside class="sidebar">
+        <h2>반 선택</h2>
+        <form id="queryForm">
+            <label>날짜<br>
+                <input type="date" id="date" name="date" required>
+            </label>
+            <label>학년<br>
+                <input type="number" id="grade" name="grade" min="1" max="3" value="1">
+            </label>
+            <label>반<br>
+                <input type="number" id="classroom" name="classroom" min="1" max="10" value="1">
+            </label>
+            <button type="submit" class="btn">조회</button>
         </form>
-    </div>
+    </aside>
+
+    <!-- 중앙 -->
+    <main class="timetable-section">
+        <h2>2주간 시간표</h2>
+        <div id="timetable-container">
+            <p class="placeholder">조회 시 시간표가 표시됩니다.</p>
+        </div>
+    </main>
+
+    <!-- 우측 -->
+    <aside class="meal-panel">
+        <h2>오늘의 급식</h2>
+        <div id="meal-info">
+            <p>조회 후 급식 정보가 표시됩니다.</p>
+        </div>
+    </aside>
+</div>
+
+<script>
+document.getElementById("queryForm").addEventListener("submit", function(e) {
+    e.preventDefault();
+
+    const date = document.getElementById("date").value.replaceAll("-", "");
+    const grade = document.getElementById("grade").value;
+    const classroom = document.getElementById("classroom").value;
+
+    fetch(`/api/data?date=${date}&grade=${grade}&classroom=${classroom}`)
+        .then(response => response.json())
+        .then(data => {
+            const timetableContainer = document.getElementById("timetable-container");
+            timetableContainer.innerHTML = "";
+            if (data.timetable.length === 0) {
+                timetableContainer.innerHTML = "<p>시간표 정보가 없습니다.</p>";
+            } else {
+                data.timetable.forEach(day => {
+                    const d = new Date(day.date.substring(0,4), day.date.substring(4,6)-1, day.date.substring(6,8));
+                    const dayBox = document.createElement("div");
+                    dayBox.className = "day-box";
+                    dayBox.innerHTML = `<h4>${d.getMonth()+1}월 ${d.getDate()}일</h4>`;
+                    day.timetable.forEach((subject, idx) => {
+                        dayBox.innerHTML += `<p>${idx+1}교시: ${subject}</p>`;
+                    });
+                    timetableContainer.appendChild(dayBox);
+                });
+            }
+
+            const mealInfo = document.getElementById("meal-info");
+            mealInfo.innerHTML = "";
+            if (data.meal.length > 0) {
+                data.meal.forEach(meal => {
+                    mealInfo.innerHTML += `<div class="meal-item"><h4>${meal.time}</h4><pre>${meal.menu}</pre></div>`;
+                });
+            } else {
+                mealInfo.innerHTML = "<p>급식 정보가 없습니다.</p>";
+            }
+        });
+});
+</script>
 </body>
 </html>
