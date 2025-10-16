@@ -1,10 +1,14 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, jsonify, session, g
 from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
+import sqlite3
+from werkzeug.security import generate_password_hash, check_password_hash
+import os
 
 app = Flask(__name__)
 app.secret_key = "secret"
+DATABASE = os.path.join(os.path.dirname(__file__), "users.db")
 
 # NEIS API 정보
 API_KEY = "e940bcda8d8e44d2a2d72d3b3c0a0e63"
@@ -29,7 +33,6 @@ def get_meal(date):
         meal_data.append({"time": t, "menu": m})
     return meal_data
 
-# 📌 시간표 정보
 def get_timetable(date, grade, classroom):
     url = (
         f"https://open.neis.go.kr/hub/hisTimetable"
@@ -43,18 +46,105 @@ def get_timetable(date, grade, classroom):
     timetable = [i.text for i in soup.find_all("ITRT_CNTNT")]
     return timetable
 
+# ---------- DB helpers ----------
+def get_db():
+    if "db" not in g:
+        g.db = sqlite3.connect(DATABASE, detect_types=sqlite3.PARSE_DECLTYPES)
+        g.db.row_factory = sqlite3.Row
+    return g.db
 
-# 📌 로그인
+@app.teardown_appcontext
+def close_db(exc):
+    db = g.pop("db", None)
+    if db is not None:
+        db.close()
+
+def init_db():
+    db = sqlite3.connect(DATABASE)
+    cur = db.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userid TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        grade TEXT,
+        classroom TEXT,
+        student_no TEXT,
+        created_at TEXT NOT NULL
+    )
+    """)
+    # ensure default admin (password 1234) exists
+    cur.execute("SELECT id FROM users WHERE userid = ?", ("admin",))
+    if not cur.fetchone():
+        cur.execute(
+            "INSERT INTO users (userid, password, created_at) VALUES (?, ?, ?)",
+            ("admin", generate_password_hash("1234"), datetime.now().isoformat())
+        )
+    db.commit()
+    db.close()
+
+# initialize DB on startup
+init_db()
+
+# 📌 회원가입
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        userid = request.form.get("userid", "").strip()
+        password = request.form.get("password", "")
+        password2 = request.form.get("password2", "")
+        student_no = request.form.get("student_no", "").strip()  # 5자리 학번
+
+        if not userid or not password:
+            return render_template("register.html", error="아이디와 비밀번호를 입력하세요.")
+        if password != password2:
+            return render_template("register.html", error="비밀번호가 일치하지 않습니다.")
+        if len(password) < 4:
+            return render_template("register.html", error="비밀번호는 4자 이상이어야 합니다.")
+
+        # 학번 유효성 검사: 반드시 5자리 숫자
+        if student_no:
+            if not (student_no.isdigit() and len(student_no) == 5):
+                return render_template("register.html", error="학번은 정확히 5자리 숫자여야 합니다.")
+            # 파싱: 첫자리=학년, 2-3자리=반, 4-5자리=번호
+            grade = student_no[0]
+            classroom = str(int(student_no[1:3]))  # "01" -> "1"
+            short_no = student_no[3:]
+        else:
+            grade = None
+            classroom = None
+            short_no = None
+
+        db = get_db()
+        try:
+            db.execute(
+                "INSERT INTO users (userid, password, grade, classroom, student_no, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (userid, generate_password_hash(password), grade, classroom, student_no or None, datetime.now().isoformat())
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            return render_template("register.html", error="이미 사용 중인 아이디입니다.")
+
+        # 자동 로그인 후 메인으로 이동
+        session["user"] = userid
+        return redirect(url_for("main"))
+
+    return render_template("register.html")
+
+# 📌 로그인 (DB 연동)
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         userid = request.form["userid"]
         password = request.form["password"]
-        if userid == "admin" and password == "1234":
+
+        db = get_db()
+        user = db.execute("SELECT * FROM users WHERE userid = ?", (userid,)).fetchone()
+        if user and check_password_hash(user["password"], password):
             session["user"] = userid
             return redirect(url_for("main"))
-        else:
-            return render_template("login.html", error="아이디 또는 비밀번호가 올바르지 않습니다.")
+
+        return render_template("login.html", error="아이디 또는 비밀번호가 올바르지 않습니다.")
     return render_template("login.html")
 
 # 📌 메인
@@ -71,11 +161,9 @@ def api_data():
     grade = request.args.get("grade", "1")
     classroom = request.args.get("classroom", "1")
 
-    # 2주(14일) 데이터 생성
     start_date = datetime.strptime(date, "%Y%m%d")
     days = [(start_date + timedelta(days=i)).strftime("%Y%m%d") for i in range(0, 14)]
 
-    # 시간표 (요일별 리스트)
     week_data = []
     for d in days:
         timetable = get_timetable(d, grade, classroom)

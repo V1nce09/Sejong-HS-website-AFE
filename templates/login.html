@@ -16,6 +16,11 @@
                 <p class="error">{{ error }}</p>
             {% endif %}
         </form>
+
+        <!-- 텍스트 클릭으로 회원가입 이동 (클래스 추가) -->
+        <p style="margin-top:12px; text-align:center;">
+            <a href="{{ url_for('register') }}" class="signup-link">회원가입</a>
+        </p>
     </div>
 </body>
 </html>
