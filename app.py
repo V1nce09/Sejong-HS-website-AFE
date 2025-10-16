@@ -86,6 +86,12 @@ def init_db():
 # initialize DB on startup
 init_db()
 
+# --- 새로 추가: 루트(랜딩) 페이지 ---
+@app.route("/")
+def index():
+    # 간단한 랜딩 페이지: 로그인, 회원가입, 게스트
+    return render_template("index.html")
+
 # 📌 회원가입
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -119,15 +125,14 @@ def register():
         try:
             db.execute(
                 "INSERT INTO users (userid, password, grade, classroom, student_no, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (userid, generate_password_hash(password), grade, classroom, student_no or None, datetime.now().isoformat())
+                (userid, generate_password_hash(password), grade or None, classroom or None, student_no or None, datetime.now().isoformat())
             )
             db.commit()
         except sqlite3.IntegrityError:
             return render_template("register.html", error="이미 사용 중인 아이디입니다.")
 
-        # 자동 로그인 후 메인으로 이동
-        session["user"] = userid
-        return redirect(url_for("main"))
+        # 회원가입 완료 후 자동 로그인 대신 로그인 페이지로 이동
+        return redirect(url_for("login"))
 
     return render_template("register.html")
 
@@ -141,18 +146,68 @@ def login():
         db = get_db()
         user = db.execute("SELECT * FROM users WHERE userid = ?", (userid,)).fetchone()
         if user and check_password_hash(user["password"], password):
+            # 로그인 성공시 세션에 필요한 정보 저장
             session["user"] = userid
+            session["student_no"] = user["student_no"] or ""
+            session["display_name"] = user["userid"]
             return redirect(url_for("main"))
-
         return render_template("login.html", error="아이디 또는 비밀번호가 올바르지 않습니다.")
     return render_template("login.html")
 
-# 📌 메인
+# --- main route: 로그인한 학생이면 자동으로 오늘 학급 시간표/급식 미리 로드 ---
 @app.route("/main")
 def main():
-    if "user" not in session:
+    # 비로그인 사용자는 guest 파라가 있어야 접근 허용
+    if "user" not in session and request.args.get("guest") != "1":
         return redirect(url_for("login"))
-    return render_template("main.html")
+
+    # 오늘 / 내일 날짜 문자열
+    today = datetime.now()
+    date_str = today.strftime("%Y%m%d")
+    tomorrow = (today + timedelta(days=1)).strftime("%Y%m%d")
+
+    # 우선적으로 쿼리스트링(수동 조회) -> 세션의 학번 파싱(자동) -> 기본값
+    grade = request.args.get("grade")
+    classroom = request.args.get("classroom")
+
+    if session.get("student_no") and request.args.get("guest") != "1":
+        sn = session.get("student_no", "")
+        if sn and sn.isdigit() and len(sn) >= 5:
+            grade = grade or sn[0]
+            classroom = classroom or str(int(sn[1:3]))
+
+    grade = grade or "1"
+    classroom = classroom or "1"
+
+    # 서버에서 오늘과 내일 데이터 로드 (안정성 확보)
+    timetable_list = []
+    for d in (date_str, tomorrow):
+        try:
+            tt = get_timetable(d, grade, classroom) or []
+        except Exception:
+            tt = []
+        if tt:
+            timetable_list.append({"date": d, "timetable": tt})
+
+    try:
+        meal = get_meal(date_str) or []
+    except Exception:
+        meal = []
+
+    return render_template(
+        "main.html",
+        meal=meal,
+        timetable=timetable_list,
+        grade=grade,
+        classroom=classroom,
+        date=date_str
+    )
+
+# 로그아웃 라우트 추가 (GET으로 간단 구현)
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
 
 # 📌 API 데이터 요청
 @app.route("/api/data", methods=["GET"])

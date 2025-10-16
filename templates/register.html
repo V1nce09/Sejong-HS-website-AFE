@@ -7,6 +7,11 @@
 </head>
 <body>
   <div class="auth-container">
+    <!-- 뒤로가기 (히스토리 우선, 없으면 인덱스로 이동) -->
+    <p class="back-wrap">
+      <a class="back-btn" href="{{ url_for('index') }}" onclick="event.preventDefault(); history.back();">← 뒤로</a>
+    </p>
+
     <h1>회원가입</h1>
 
     {% if error %}

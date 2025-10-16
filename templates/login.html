@@ -7,6 +7,11 @@
 </head>
 <body class="login-body">
     <div class="login-container">
+        <!-- 뒤로가기 (히스토리 우선, 없으면 인덱스로 이동) -->
+        <p class="back-wrap">
+            <a class="back-btn" href="{{ url_for('index') }}" onclick="event.preventDefault(); history.back();">← 뒤로</a>
+        </p>
+
         <h2 class="site-title">세종고 포털</h2>
         <form method="POST">
             <input type="text" name="userid" placeholder="아이디" required>
@@ -17,7 +22,6 @@
             {% endif %}
         </form>
 
-        <!-- 텍스트 클릭으로 회원가입 이동 (클래스 추가) -->
         <p style="margin-top:12px; text-align:center;">
             <a href="{{ url_for('register') }}" class="signup-link">회원가입</a>
         </p>

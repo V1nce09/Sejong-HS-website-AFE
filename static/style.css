@@ -11,12 +11,14 @@ body {
     align-items: center;
     height: 100vh;
 }
+.login-body { position: relative; } /* 뒤로가기 버튼을 위한 위치 설정 */
 .login-container {
     background: white;
     padding: 40px;
     border-radius: 10px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     text-align: center;
+    position: relative; /* back-wrap을 박스 내부 기준으로 절대위치 지정 가능하게 함 */
 }
 .login-container input {
     width: 80%;
@@ -59,6 +61,9 @@ body {
     display: flex;
     height: 100vh;
 }
+
+/* 메인 컨테이너 기준으로 프로필 위치가 작동하도록 함 */
+.container { position: relative; }
 
 /* 좌측 패널 */
 .sidebar {
@@ -284,4 +289,254 @@ body {
 @media (max-width: 720px) {
     .auth-container { margin: 4vh 16px; padding: 20px; border-radius: 10px; }
     .auth-container h1 { font-size: 1.25rem; }
+}
+
+/* 랜딩 페이지 스타일 */
+.landing-page {
+  background: linear-gradient(180deg,#f6f9ff,#ffffff);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+}
+
+.landing {
+  width: 100%;
+  max-width: 640px;
+  padding: 36px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(11,22,39,0.06);
+  text-align: center;
+  border: 1px solid rgba(10,30,60,0.04);
+}
+
+.landing-title {
+  margin: 0 0 6px;
+  font-size: 1.8rem;
+  color: #07325a;
+  font-weight: 800;
+}
+
+.landing-sub {
+  margin: 0 0 20px;
+  color: #55606a;
+  font-size: 0.98rem;
+}
+
+/* 버튼 그룹 */
+.btns {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.btn {
+  display: inline-block;
+  padding: 10px 18px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-weight: 700;
+  transition: transform .08s ease, box-shadow .12s ease;
+  cursor: pointer;
+  min-width: 120px;
+  text-align: center;
+}
+
+/* primary */
+.btn.primary {
+  color: #fff;
+  background: linear-gradient(180deg,#1672ff,#0b57d6);
+  box-shadow: 0 8px 20px rgba(11,87,214,0.12);
+  border: none;
+}
+.btn.primary:hover { transform: translateY(-2px); }
+
+/* ghost */
+.btn.ghost {
+  background: transparent;
+  color: #1672ff;
+  border: 1px solid rgba(22,114,255,0.16);
+}
+.btn.ghost:hover {
+  background: rgba(22,114,255,0.04);
+  transform: translateY(-2px);
+}
+
+/* 뒤로가기 링크 공통 스타일 */
+.back-wrap { margin-bottom: 12px; }
+.back-btn {
+  display: inline-block;
+  color: #324a5e;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background .12s ease, transform .08s ease;
+}
+.back-btn:hover {
+  background: rgba(10,30,60,0.04);
+  transform: translateY(-1px);
+}
+
+/* 로그인 페이지에서 뒤로가기 버튼 스타일 */
+.login-body .back-wrap {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    margin: 0;
+    z-index: 20;
+}
+
+.login-body .back-btn {
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.9);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(11,22,39,0.06);
+}
+
+/* 뒤로가기 버튼을 로그인 박스 내부 왼쪽 위로 배치 */
+.login-container .back-wrap {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    margin: 0;
+    z-index: 10;
+}
+
+.login-container .back-btn {
+    padding: 6px 8px;
+    background: rgba(255,255,255,0.95);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(11,22,39,0.06);
+}
+
+/* 작고 심플한 프로필 박스 (로그인 시 우측 상단에 표시) */
+.profile-mini {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), #ffffff);
+  padding: 12px 14px;
+  border-radius: 12px;
+  box-shadow: 0 8px 26px rgba(11,22,39,0.08);
+  border: 1px solid rgba(10,30,60,0.06);
+  z-index: 2000;
+  min-width: 200px;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.profile-mini:hover { transform: translateY(-2px); box-shadow: 0 12px 36px rgba(11,22,39,0.12); }
+
+/* 아바타 개선 */
+.profile-mini .avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: linear-gradient(135deg,#3aa0ff,#0058d6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 1.2rem;
+  flex: 0 0 50px;
+  box-shadow: 0 6px 14px rgba(11,22,39,0.06) inset;
+}
+
+/* 텍스트 정렬/타이포 */
+.profile-mini .profile-text { line-height: 1; overflow: hidden; }
+.profile-mini .profile-name {
+  font-weight: 800;
+  color: #083366;
+  font-size: 1rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.profile-mini .profile-sub {
+  font-size: 0.82rem;
+  color: #6b8596;
+  margin-top: 2px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+/* 점 버튼(작게) */
+.profile-actions { margin-left: auto; position: relative; }
+.dots-btn {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: #33475b;
+}
+.dots-btn:hover { background: rgba(10,30,60,0.04); transform: translateY(-1px); }
+
+/* 드롭다운: 프로필 박스 위로 뜨게 (왼쪽 하단 배치에 맞춤) */
+.profile-mini .profile-dropdown {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  background: #fff;
+  border: 1px solid rgba(10,30,60,0.06);
+  box-shadow: 0 10px 30px rgba(11,22,39,0.10);
+  border-radius: 10px;
+  min-width: 140px;
+  padding: 6px;
+  transform-origin: bottom right;
+  transition: opacity .12s ease, transform .12s ease;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+}
+
+/* 표시 상태 */
+.profile-mini .profile-dropdown[aria-hidden="false"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+/* 드롭다운 항목 스타일 */
+.profile-mini .profile-dropdown .dropdown-item {
+  display: block;
+  padding: 8px 10px;
+  color: #163a5f;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 700;
+}
+.profile-mini .profile-dropdown .dropdown-item:hover {
+  background: rgba(22,114,255,0.06);
+}
+
+/* 모바일 조정 */
+@media (max-width: 720px) {
+  .profile-mini {
+    left: 12px;
+    bottom: 12px;
+    padding: 8px 10px;
+    min-width: 160px;
+  }
+  .profile-mini .avatar { width: 42px; height: 42px; font-size: 1rem; }
+  .profile-mini .profile-name { font-size: 0.95rem; }
+  .profile-mini .profile-sub { font-size: 0.78rem; }
+}
+
+/* 반응형 */
+@media (max-width: 520px) {
+  .landing { padding: 20px; border-radius: 10px; margin: 0 12px; }
+  .landing-title { font-size: 1.25rem; }
+  .btn { min-width: 100px; padding: 10px 14px; }
 }
