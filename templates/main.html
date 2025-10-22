@@ -31,6 +31,9 @@
         </div>
       </div>
     </div>
+    {% else %}
+    <!-- 로그인 버튼 -->
+    <a href="{{ url_for('login') }}" class="bottom-left-auth-btn">로그인</a>
     {% endif %}
 
     <!-- 좌측 패널 -->
@@ -42,11 +45,11 @@
         </label>
 
         <label style="color:#fff;font-weight:600;">학년
-          <input type="text" id="grade" name="grade" value="{{ grade }}">
+          <input type="number" id="grade" name="grade" min="1" max="3" value="{{ grade }}">
         </label>
 
         <label style="color:#fff;font-weight:600;">반
-          <input type="text" id="classroom" name="classroom" value="{{ classroom }}">
+          <input type="number" id="classroom" name="classroom" min="1" max="15" value="{{ classroom }}">
         </label>
 
         <button type="submit" style="margin-top:10px;background:#e67e22;color:#fff;padding:10px;border:none;border-radius:6px;cursor:pointer;width:100%;">조회</button>
@@ -55,116 +58,173 @@
 
     <!-- 중앙 -->
     <main class="timetable-section">
-      <h2 style="margin-top:0;">수업 일정 (2주)</h2>
-      <p style="color:#34495e;">조회 시 시간표가 표시됩니다.</p>
-
-      {% if timetable %}
-        {% for day in timetable %}
-          <div class="day-box">
-            <strong>{{ day.date[:4] }}-{{ day.date[4:6] }}-{{ day.date[6:] }}</strong>
-            <ul>
-              {% for item in day.timetable %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          </div>
-        {% endfor %}
-      {% else %}
-        <p class="placeholder">시간표 정보가 없습니다.</p>
-      {% endif %}
+      <div id="timetable-title-container"><h2 style="margin-top:0;"></h2></div>
+      <p class="placeholder" id="timetable-loading">시간표를 불러오는 중...</p>
+      <div id="timetable-data-container"></div>
     </main>
 
     <!-- 우측 -->
     <aside class="meal-panel">
-      <h3>오늘의 급식</h3>
-      {% if meal %}
-        {% for m in meal %}
-          <div class="meal-item">
-            <strong>{{ m.time }}</strong>
-            <div style="white-space:pre-wrap;margin-top:6px;">{{ m.menu }}</div>
-          </div>
-        {% endfor %}
-      {% else %}
-        <p style="color:#324a5e;">급식 정보가 없습니다.</p>
-      {% endif %}
+      <h2 id="meal-date-display" style="margin-top:0;"></h2> <!-- 날짜를 표시할 새로운 요소 -->
+      <p class="placeholder" id="meal-loading">급식 정보를 불러오는 중...</p>
+      <div id="meal-content"></div>
     </aside>
 </div>
 
 <script>
-/* 프로필 드롭다운 토글 및 외부 클릭 닫기 */
-(function(){
-  const profile = document.querySelector('.profile-mini');
-  if (!profile) return;
-  const btn = profile.querySelector('.dots-btn');
-  const dropdown = profile.querySelector('.profile-dropdown');
+(function() {
+    /* --- DOM 요소 --- */
+    const queryForm = document.getElementById('queryForm');
+    const dateInput = document.getElementById('date');
+    const gradeInput = document.getElementById('grade');
+    const classroomInput = document.getElementById('classroom');
+    const timetableContainer = document.getElementById('timetable-data-container');
+    const timetableLoading = document.getElementById('timetable-loading');
+    const timetableTitle = document.querySelector('#timetable-title-container h2');
+    const mealContent = document.getElementById('meal-content');
+    const mealLoading = document.getElementById('meal-loading');
+    const mealDateDisplay = document.getElementById('meal-date-display');
 
-  function closeDropdown(){
-    if (!dropdown) return;
-    dropdown.setAttribute('aria-hidden', 'true');
-  }
-  function openDropdown(){
-    if (!dropdown) return;
-    dropdown.setAttribute('aria-hidden', 'false');
-  }
+    /* --- 프로필 드롭다운 --- */
+    const profile = document.querySelector('.profile-mini');
+    if (profile) {
+        const btn = profile.querySelector('.dots-btn');
+        const dropdown = profile.querySelector('.profile-dropdown');
+        const closeDropdown = () => dropdown?.setAttribute('aria-hidden', 'true');
+        const openDropdown = () => dropdown?.setAttribute('aria-hidden', 'false');
 
-  document.addEventListener('click', function(e){
-    // 버튼 클릭은 내부에서 처리
-    if (profile.contains(e.target)) return;
-    closeDropdown();
-  });
-
-  if (btn) {
-    btn.addEventListener('click', function(e){
-      e.stopPropagation();
-      const isOpen = dropdown.getAttribute('aria-hidden') === 'false';
-      if (isOpen) closeDropdown();
-      else openDropdown();
-    });
-  }
-
-  // Esc로 닫기
-  document.addEventListener('keydown', function(e){
-    if (e.key === 'Escape') closeDropdown();
-  });
-})();
-
-/* 기존의 클라이언트 조회 기능 유지: 폼 제출시 API 호출로 시간표/급식 불러오기 */
-document.getElementById("queryForm").addEventListener("submit", function(e) {
-    e.preventDefault();
-    const date = document.getElementById("date").value.replaceAll("-", "");
-    const grade = document.getElementById("grade").value;
-    const classroom = document.getElementById("classroom").value;
-
-    fetch(`/api/data?date=${date}&grade=${grade}&classroom=${classroom}`)
-        .then(response => response.json())
-        .then(data => {
-            const timetableContainer = document.querySelector(".timetable-section");
-            // 간단 갱신: 페이지 내 중앙 영역을 다시 그림 (간단 구현)
-            let html = '<h2 style="margin-top:0;">수업 일정 (2주)</h2>';
-            if (data.timetable.length === 0) {
-                html += '<p class="placeholder">시간표 정보가 없습니다.</p>';
-            } else {
-                data.timetable.forEach(day => {
-                    const d = day.date;
-                    html += `<div class="day-box"><strong>${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)}</strong><ul>`;
-                    day.timetable.forEach((s) => { html += `<li>${s}</li>`; });
-                    html += '</ul></div>';
-                });
-            }
-            timetableContainer.innerHTML = html;
-
-            const mealPanel = document.querySelector(".meal-panel");
-            let mealHtml = '<h3>오늘의 급식</h3>';
-            if (data.meal.length > 0) {
-                data.meal.forEach(m => {
-                    mealHtml += `<div class="meal-item"><strong>${m.time}</strong><div style="white-space:pre-wrap;margin-top:6px;">${m.menu}</div></div>`;
-                });
-            } else {
-                mealHtml += '<p style="color:#324a5e;">급식 정보가 없습니다.</p>';
-            }
-            mealPanel.innerHTML = mealHtml;
+        document.addEventListener('click', (e) => !profile.contains(e.target) && closeDropdown());
+        btn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = dropdown.getAttribute('aria-hidden') === 'false';
+            isOpen ? closeDropdown() : openDropdown();
         });
-});
+        document.addEventListener('keydown', (e) => e.key === 'Escape' && closeDropdown());
+    }
+
+    /* --- 데이터 렌더링 함수 --- */
+    function renderTimetable(timetableData, append) {
+        let timetableHtml = '';
+        timetableData.forEach(dayData => {
+            const d = new Date(dayData.date.substring(0, 4), dayData.date.substring(4, 6) - 1, dayData.date.substring(6, 8));
+            const dayNames = ["일", "월", "화", "수", "목", "금", "토"];
+            const dayOfWeek = dayNames[d.getDay()];
+            const displayDate = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dayOfWeek})`;
+
+            timetableHtml += `<div class="day-box"><h4>${displayDate}</h4><ul class="timetable-list">`;
+            if (dayData.timetable.length > 0) {
+                dayData.timetable.forEach((subject, index) => {
+                    timetableHtml += `<li><span class="period">${index + 1}교시</span> ${subject}</li>`;
+                });
+            } else {
+                timetableHtml += `<li class="no-data">수업 없음</li>`;
+            }
+            timetableHtml += `</ul></div>`;
+        });
+
+        if (append) {
+            timetableContainer.innerHTML += timetableHtml;
+        } else {
+            timetableContainer.innerHTML = timetableHtml;
+        }
+    }
+
+    function renderMeal(mealData) {
+        if (mealData && mealData.length > 0) {
+            let mealHtml = '';
+            mealData.forEach(meal => {
+                const menuHtml = meal.menu.replace(/\n/g, '<br>');
+                mealHtml += `<div class="meal-item"><h4> ${meal.time}</h4><div>${menuHtml}</div></div>`;
+            });
+            mealContent.innerHTML = mealHtml;
+        } else {
+            mealContent.innerHTML = '<p class="placeholder">급식 정보가 없습니다.</p>';
+        }
+    }
+
+    /* --- API 호출 함수 --- */
+    async function fetchTimetable(date, grade, classroom, startOffset, numDays) {
+        const url = `/api/data?date=${date}&grade=${grade}&classroom=${classroom}&data_type=timetable&start_offset=${startOffset}&num_days=${numDays}`;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
+            return data.timetable || [];
+        } catch (error) {
+            console.error('Error fetching timetable:', error);
+            return []; // 오류 발생 시 빈 배열 반환
+        }
+    }
+
+    async function fetchMeal(date) {
+        const url = `/api/data?date=${date}&data_type=meal`;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const data = await response.json();
+            return data.meal || [];
+        } catch (error) {
+            console.error('Error fetching meal:', error);
+            return [];
+        }
+    }
+
+    /* --- 데이터 로드 및 렌더링 총괄 --- */
+    async function loadAndRenderData(date, grade, classroom) {
+        // UI 업데이트 (로딩 상태)
+        timetableLoading.style.display = 'block';
+        mealLoading.style.display = 'block';
+        timetableContainer.innerHTML = '';
+        mealContent.innerHTML = '';
+        
+        const dateObj = new Date(date.substring(0, 4), date.substring(4, 6) - 1, date.substring(6, 8));
+        mealDateDisplay.innerHTML = `${dateObj.getMonth() + 1}월 ${dateObj.getDate()}일 급식<br><br>`;
+        timetableTitle.textContent = `${grade}학년 ${classroom}반 시간표`;
+
+        // 급식 데이터를 먼저 불러와서 바로 렌더링
+        const mealData = await fetchMeal(date);
+        renderMeal(mealData);
+        mealLoading.style.display = 'none'; // 급식 로딩 완료
+
+        // 시간표 로딩 시작
+        timetableLoading.style.display = 'block';
+        timetableContainer.innerHTML = ''; // 기존 내용 비우기
+
+        // 10일치 시간표 데이터를 한 번에 불러옴 (네트워크 효율성)
+        const allTimetableData = await fetchTimetable(date, grade, classroom, 0, 10); // Fetch all 10 days at once
+
+        // 불러온 데이터를 한 번에 렌더링
+        if (allTimetableData && allTimetableData.length > 0) {
+            renderTimetable(allTimetableData, false); // Render all data at once, not appending
+        }
+
+        timetableLoading.style.display = 'none'; // 시간표 로딩 완료
+
+        // 만약 전체 기간에 데이터가 없다면 메시지 표시
+        if (allTimetableData.length === 0) {
+            timetableContainer.innerHTML = '<p class="placeholder">전체 기간에 시간표 정보가 없습니다.</p>';
+        }
+    }
+
+    /* --- 이벤트 리스너 --- */
+    queryForm.addEventListener("submit", function(e) {
+        e.preventDefault();
+        const date = dateInput.value.replaceAll("-", "");
+        const grade = gradeInput.value;
+        const classroom = classroomInput.value;
+        loadAndRenderData(date, grade, classroom);
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const initialDate = "{{ date }}";
+        const initialGrade = "{{ grade }}";
+        const initialClassroom = "{{ classroom }}";
+        
+        if (initialDate && initialGrade && initialClassroom) {
+            loadAndRenderData(initialDate, initialGrade, initialClassroom);
+        }
+    });
+})();
 </script>
 </body>
 </html>

@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
+import time
 
 app = Flask(__name__)
 app.secret_key = "secret"
@@ -16,24 +17,63 @@ ATPT_OFCDC_SC_CODE = "I10"
 SD_SCHUL_CODE = "9300054"
 SEM = "2"
 
+#캐싱 설정 및 저장소
+CACHE_LIFETIME = 3600
+meal_cache = {}
+timetable_cache = {}
+
 # 📌 급식 정보
 def get_meal(date):
+    cache_key = date
+    
+    if cache_key in meal_cache:
+        cached_data, timestamp = meal_cache[cache_key]
+        if time.time() - timestamp < CACHE_LIFETIME:
+            print(f"급식 정보 캐시 히트: {date}")
+            return cached_data
+        else:
+            print(f"급식 정보 캐시 만료: {date}")
+
+    print(f"급식 정보 API 호출: {date}")
     url = (
         f"https://open.neis.go.kr/hub/mealServiceDietInfo"
         f"?KEY={API_KEY}&Type=xml&pIndex=1&pSize=100"
         f"&ATPT_OFCDC_SC_CODE={ATPT_OFCDC_SC_CODE}"
         f"&SD_SCHUL_CODE={SD_SCHUL_CODE}&MLSV_YMD={date}"
     )
-    info = requests.get(url).text
-    soup = BeautifulSoup(info, "xml")
-    meal_data = []
-    times = [t.text for t in soup.find_all("MMEAL_SC_NM")]
-    menus = [m.text.replace("<br/>", "\n") for m in soup.find_all("DDISH_NM")]
-    for t, m in zip(times, menus):
-        meal_data.append({"time": t, "menu": m})
-    return meal_data
+    try:
+        info = requests.get(url).text
+        soup = BeautifulSoup(info, "xml")
+        meal_data = []
+        # Check for API error response from NEIS
+        if soup.find("RESULT") and soup.find("CODE").text != "INFO-000":
+            print(f"NEIS API 오류 응답 (급식): {soup.find('MESSAGE').text}")
+            meal_data = []
+        else:
+            times = [t.text for t in soup.find_all("MMEAL_SC_NM")]
+            menus = [m.text.replace("<br/>", "\n") for m in soup.find_all("DDISH_NM")]
+            for t, m in zip(times, menus):
+                meal_data.append({"time": t, "menu": m})
+
+        meal_cache[cache_key] = (meal_data, time.time())
+        return meal_data
+
+    except requests.exceptions.RequestException as e:
+        print(f"API 요청 오류 (급식): {e}")
+        return []
 
 def get_timetable(date, grade, classroom):
+    cache_key = f"{date}_{grade}_{classroom}"
+
+    if cache_key in timetable_cache:
+        cached_data, timestamp = timetable_cache[cache_key]
+        if time.time() - timestamp < CACHE_LIFETIME:
+            print(f"시간표 캐시 히트: {cache_key}")
+            return cached_data
+        else:
+            print(f"시간표 캐시 만료: {cache_key}")
+
+    print(f"시간표 API 호출: {cache_key}")
     url = (
         f"https://open.neis.go.kr/hub/hisTimetable"
         f"?KEY={API_KEY}&Type=xml&pIndex=1&pSize=100"
@@ -41,10 +81,41 @@ def get_timetable(date, grade, classroom):
         f"&SD_SCHUL_CODE={SD_SCHUL_CODE}&SEM={SEM}"
         f"&GRADE={grade}&CLASS_NM={classroom}&ALL_TI_YMD={date}"
     )
-    info = requests.get(url).text
-    soup = BeautifulSoup(info, "xml")
-    timetable = [i.text for i in soup.find_all("ITRT_CNTNT")]
-    return timetable
+
+    try:
+        info = requests.get(url).text
+        soup = BeautifulSoup(info, "xml")
+        
+        if soup.find("RESULT") and soup.find("CODE").text != "INFO-000":
+            print(f"NEIS API 오류 응답 (시간표): {soup.find('MESSAGE').text}")
+            timetable_cache[cache_key] = ([], time.time())
+            return []
+
+        # 날짜별로 시간표를 그룹화할 딕셔너리
+        weekly_schedule = {}
+        for row in soup.find_all("row"):
+            day = row.find("ALL_TI_YMD").text
+            period = int(row.find("PERIO").text)
+            subject = row.find("ITRT_CNTNT").text
+            
+            if day not in weekly_schedule:
+                weekly_schedule[day] = {}
+            weekly_schedule[day][period] = subject
+
+        # 프론트엔드가 원하는 형태로 데이터 재구성
+        # [{'date': '20231023', 'timetable': ['국어', '수학', ...]}, ...]
+        result = []
+        for day, periods in sorted(weekly_schedule.items()):
+            # 교시(period) 순서대로 과목 정렬
+            day_timetable = [periods[p] for p in sorted(periods.keys())]
+            result.append({"date": day, "timetable": day_timetable})
+
+        timetable_cache[cache_key] = (result, time.time())
+        return result
+
+    except requests.exceptions.RequestException as e:
+        print(f"API 요청 오류 (시간표): {e}")
+        return []
 
 # ---------- DB helpers ----------
 def get_db():
@@ -72,7 +143,8 @@ def init_db():
         student_no TEXT,
         created_at TEXT NOT NULL
     )
-    """)
+    """
+    )
     # ensure default admin (password 1234) exists
     cur.execute("SELECT id FROM users WHERE userid = ?", ("admin",))
     if not cur.fetchone():
@@ -89,8 +161,7 @@ init_db()
 # --- 새로 추가: 루트(랜딩) 페이지 ---
 @app.route("/")
 def index():
-    # 간단한 랜딩 페이지: 로그인, 회원가입, 게스트
-    return render_template("index.html")
+    return redirect(url_for("main"))
 
 # 📌 회원가입
 @app.route("/register", methods=["GET", "POST"])
@@ -157,10 +228,6 @@ def login():
 # --- main route: 로그인한 학생이면 자동으로 오늘 학급 시간표/급식 미리 로드 ---
 @app.route("/main")
 def main():
-    # 비로그인 사용자는 guest 파라가 있어야 접근 허용
-    if "user" not in session and request.args.get("guest") != "1":
-        return redirect(url_for("login"))
-
     # 오늘 / 내일 날짜 문자열
     today = datetime.now()
     date_str = today.strftime("%Y%m%d")
@@ -180,24 +247,8 @@ def main():
     classroom = classroom or "1"
 
     # 서버에서 오늘과 내일 데이터 로드 (안정성 확보)
-    timetable_list = []
-    for d in (date_str, tomorrow):
-        try:
-            tt = get_timetable(d, grade, classroom) or []
-        except Exception:
-            tt = []
-        if tt:
-            timetable_list.append({"date": d, "timetable": tt})
-
-    try:
-        meal = get_meal(date_str) or []
-    except Exception:
-        meal = []
-
     return render_template(
         "main.html",
-        meal=meal,
-        timetable=timetable_list,
         grade=grade,
         classroom=classroom,
         date=date_str
@@ -215,25 +266,59 @@ def api_data():
     date = request.args.get("date", datetime.now().strftime("%Y%m%d"))
     grade = request.args.get("grade", "1")
     classroom = request.args.get("classroom", "1")
+    data_type = request.args.get("data_type", "all") # 'meal', 'timetable', 'all'
+    start_offset = int(request.args.get("start_offset", "0")) # 몇 일 뒤부터 시작할지
+    num_days_to_fetch = int(request.args.get("num_days", "10")) # 몇 일치를 가져올지 (기본 10일)
 
-    start_date = datetime.strptime(date, "%Y%m%d")
-    days = [(start_date + timedelta(days=i)).strftime("%Y%m%d") for i in range(0, 14)]
+    response_data = {}
 
-    week_data = []
-    for d in days:
-        timetable = get_timetable(d, grade, classroom)
-        if timetable:
-            week_data.append({"date": d, "timetable": timetable})
+    if data_type in ["meal", "all"]:
+        try:
+            meal_data = get_meal(date)
+        except Exception:
+            meal_data = []
+        response_data["meal"] = meal_data
 
-    meal_data = get_meal(date)
+    if data_type in ["timetable", "all"]:
+        week_data = []
+        try:
+            all_timetable_data = []
+            base_date = datetime.strptime(date, "%Y%m%d")
+            
+            fetched_count = 0
+            # start_offset부터 시작하여 최대 14일 범위 내에서 num_days_to_fetch 만큼의 주중 데이터를 가져옴
+            for i in range(start_offset, start_offset + 14): 
+                if fetched_count >= num_days_to_fetch:
+                    break
 
-    return jsonify({
-        "meal": meal_data,
-        "timetable": week_data,
-        "grade": grade,
-        "classroom": classroom,
-        "date": date
-    })
+                current_date = base_date + timedelta(days=i)
+                # 주말(토, 일)은 건너뛰기
+                if current_date.weekday() >= 5: # 0=월, 1=화, ..., 4=금, 5=토, 6=일
+                    continue
+                
+                current_date_str = current_date.strftime("%Y%m%d")
+                daily_timetable = get_timetable(current_date_str, grade, classroom)
+                if daily_timetable:
+                    all_timetable_data.extend(daily_timetable)
+                    fetched_count += 1 # 유효한 주중 날짜만 카운트
+            
+            # 중복 제거 및 날짜순 정렬
+            unique_dates = {}
+            for item in all_timetable_data:
+                unique_dates[item['date']] = item
+            
+            week_data = sorted(list(unique_dates.values()), key=lambda x: x['date'])
+
+        except Exception as e:
+            print(f"시간표 데이터 처리 중 오류 발생 ({date}): {e}")
+        
+        response_data["timetable"] = week_data
+
+    response_data["grade"] = grade
+    response_data["classroom"] = classroom
+    response_data["date"] = date
+
+    return jsonify(response_data)
 
 
 if __name__ == "__main__":

@@ -20,6 +20,12 @@ body {
     text-align: center;
     position: relative; /* back-wrap을 박스 내부 기준으로 절대위치 지정 가능하게 함 */
 }
+
+.login-container form {
+    margin-top: 20px;
+    text-align: center;
+}
+
 .login-container input {
     width: 80%;
     padding: 10px;
@@ -79,7 +85,7 @@ body {
 .sidebar input {
     margin-top: 5px;
     margin-bottom: 10px;
-    border: none;
+    border: 1px solid #ccc; /* Added a default border */
     border-radius: 4px;
     padding: 6px;
 }
@@ -96,7 +102,16 @@ body {
     border-radius: 10px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     margin-bottom: 15px;
-    padding: 10px;
+    padding: 10px 25px; /* Adjusted padding for better alignment and more right shift */
+}
+.day-box h4 {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+.timetable-list {
+    list-style: none;
+    padding-left: 0;
 }
 
 /* 우측 급식 */
@@ -107,6 +122,12 @@ body {
     padding: 20px;
     overflow-y: auto;
 }
+#meal-date-display {
+    margin-bottom: 0;
+}
+#meal-date-display {
+    margin-bottom: 10px;
+}
 .meal-item {
     background: #fdf6e3;
     border: 1px solid #f1c40f;
@@ -114,6 +135,11 @@ body {
     margin-bottom: 10px;
     border-radius: 8px;
 }
+.meal-item h4 {
+    margin-top: 0;
+    margin-bottom: 5px;
+}
+
 
 /* 회원가입 폼 개선 */
 .auth-container {
@@ -433,6 +459,30 @@ body {
   transition: transform .12s ease, box-shadow .12s ease;
 }
 .profile-mini:hover { transform: translateY(-2px); box-shadow: 0 12px 36px rgba(11,22,39,0.12); }
+
+/* 로그인 버튼 (프로필과 동일 위치) */
+.bottom-left-auth-btn {
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  display: inline-block;
+  padding: 12px 14px;
+  background: #e67e22;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 1rem;
+  box-shadow: 0 8px 20px rgba(11,87,214,0.12);
+  transition: transform .08s ease, filter .12s ease;
+  text-decoration: none;
+  text-align: center;
+  min-width: 200px;
+  z-index: 2000;
+}
+.bottom-left-auth-btn:hover { background: #d35400; filter: brightness(1); transform: translateY(-1px); }
+.bottom-left-auth-btn:active { transform: translateY(0); }
 
 /* 아바타 개선 */
 .profile-mini .avatar {
