@@ -140,6 +140,13 @@ body {
     margin-bottom: 5px;
 }
 
+.placeholder {
+    min-height: 50px; /* 로딩 메시지가 항상 공간을 차지하도록 최소 높이 설정 */
+    text-align: center; /* 텍스트 중앙 정렬 */
+    line-height: 50px; /* 텍스트 수직 중앙 정렬 */
+    color: #666; /* 텍스트 색상 */
+    font-weight: 600; /* 텍스트를 더 굵게 */
+}
 
 /* 회원가입 폼 개선 */
 .auth-container {

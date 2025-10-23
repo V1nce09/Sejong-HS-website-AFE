@@ -1,164 +1,31 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session, g
-from datetime import datetime, timedelta
-import requests
-from bs4 import BeautifulSoup
-import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta
 import os
-import time
+
+import config
+import database
+import neis
 
 app = Flask(__name__)
-app.secret_key = "secret"
-DATABASE = os.path.join(os.path.dirname(__file__), "users.db")
+app.config.from_object(config) # config.py에서 설정 로드
 
-# NEIS API 정보
-API_KEY = "e940bcda8d8e44d2a2d72d3b3c0a0e63"
-ATPT_OFCDC_SC_CODE = "I10"
-SD_SCHUL_CODE = "9300054"
-SEM = "2"
+# 데이터베이스 초기화 및 teardown 등록
+database.init_app(app)
 
-#캐싱 설정 및 저장소
-CACHE_LIFETIME = 3600
-meal_cache = {}
-timetable_cache = {}
+# --- 헬퍼 함수 ---
+def pw_class_count(password):
+    """비밀번호 복잡도 검사: 소문자, 대문자, 숫자, 특수문자 중 몇 가지를 포함하는지 반환"""
+    count = 0
+    if any(c.islower() for c in password): count += 1
+    if any(c.isupper() for c in password): count += 1
+    if any(c.isdigit() for c in password): count += 1
+    if any(not c.isalnum() for c in password): count += 1 # 특수문자
+    return count
 
-# 📌 급식 정보
-def get_meal(date):
-    cache_key = date
-    
-    if cache_key in meal_cache:
-        cached_data, timestamp = meal_cache[cache_key]
-        if time.time() - timestamp < CACHE_LIFETIME:
-            print(f"급식 정보 캐시 히트: {date}")
-            return cached_data
-        else:
-            print(f"급식 정보 캐시 만료: {date}")
+# --- 라우트 정의 ---
 
-    print(f"급식 정보 API 호출: {date}")
-    url = (
-        f"https://open.neis.go.kr/hub/mealServiceDietInfo"
-        f"?KEY={API_KEY}&Type=xml&pIndex=1&pSize=100"
-        f"&ATPT_OFCDC_SC_CODE={ATPT_OFCDC_SC_CODE}"
-        f"&SD_SCHUL_CODE={SD_SCHUL_CODE}&MLSV_YMD={date}"
-    )
-    try:
-        info = requests.get(url).text
-        soup = BeautifulSoup(info, "xml")
-        meal_data = []
-        # Check for API error response from NEIS
-        if soup.find("RESULT") and soup.find("CODE").text != "INFO-000":
-            print(f"NEIS API 오류 응답 (급식): {soup.find('MESSAGE').text}")
-            meal_data = []
-        else:
-            times = [t.text for t in soup.find_all("MMEAL_SC_NM")]
-            menus = [m.text.replace("<br/>", "\n") for m in soup.find_all("DDISH_NM")]
-            for t, m in zip(times, menus):
-                meal_data.append({"time": t, "menu": m})
-
-        meal_cache[cache_key] = (meal_data, time.time())
-        return meal_data
-
-    except requests.exceptions.RequestException as e:
-        print(f"API 요청 오류 (급식): {e}")
-        return []
-
-def get_timetable(date, grade, classroom):
-    cache_key = f"{date}_{grade}_{classroom}"
-
-    if cache_key in timetable_cache:
-        cached_data, timestamp = timetable_cache[cache_key]
-        if time.time() - timestamp < CACHE_LIFETIME:
-            print(f"시간표 캐시 히트: {cache_key}")
-            return cached_data
-        else:
-            print(f"시간표 캐시 만료: {cache_key}")
-
-    print(f"시간표 API 호출: {cache_key}")
-    url = (
-        f"https://open.neis.go.kr/hub/hisTimetable"
-        f"?KEY={API_KEY}&Type=xml&pIndex=1&pSize=100"
-        f"&ATPT_OFCDC_SC_CODE={ATPT_OFCDC_SC_CODE}"
-        f"&SD_SCHUL_CODE={SD_SCHUL_CODE}&SEM={SEM}"
-        f"&GRADE={grade}&CLASS_NM={classroom}&ALL_TI_YMD={date}"
-    )
-
-    try:
-        info = requests.get(url).text
-        soup = BeautifulSoup(info, "xml")
-        
-        if soup.find("RESULT") and soup.find("CODE").text != "INFO-000":
-            print(f"NEIS API 오류 응답 (시간표): {soup.find('MESSAGE').text}")
-            timetable_cache[cache_key] = ([], time.time())
-            return []
-
-        # 날짜별로 시간표를 그룹화할 딕셔너리
-        weekly_schedule = {}
-        for row in soup.find_all("row"):
-            day = row.find("ALL_TI_YMD").text
-            period = int(row.find("PERIO").text)
-            subject = row.find("ITRT_CNTNT").text
-            
-            if day not in weekly_schedule:
-                weekly_schedule[day] = {}
-            weekly_schedule[day][period] = subject
-
-        # 프론트엔드가 원하는 형태로 데이터 재구성
-        # [{'date': '20231023', 'timetable': ['국어', '수학', ...]}, ...]
-        result = []
-        for day, periods in sorted(weekly_schedule.items()):
-            # 교시(period) 순서대로 과목 정렬
-            day_timetable = [periods[p] for p in sorted(periods.keys())]
-            result.append({"date": day, "timetable": day_timetable})
-
-        timetable_cache[cache_key] = (result, time.time())
-        return result
-
-    except requests.exceptions.RequestException as e:
-        print(f"API 요청 오류 (시간표): {e}")
-        return []
-
-# ---------- DB helpers ----------
-def get_db():
-    if "db" not in g:
-        g.db = sqlite3.connect(DATABASE, detect_types=sqlite3.PARSE_DECLTYPES)
-        g.db.row_factory = sqlite3.Row
-    return g.db
-
-@app.teardown_appcontext
-def close_db(exc):
-    db = g.pop("db", None)
-    if db is not None:
-        db.close()
-
-def init_db():
-    db = sqlite3.connect(DATABASE)
-    cur = db.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        userid TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        grade TEXT,
-        classroom TEXT,
-        student_no TEXT,
-        created_at TEXT NOT NULL
-    )
-    """
-    )
-    # ensure default admin (password 1234) exists
-    cur.execute("SELECT id FROM users WHERE userid = ?", ("admin",))
-    if not cur.fetchone():
-        cur.execute(
-            "INSERT INTO users (userid, password, created_at) VALUES (?, ?, ?)",
-            ("admin", generate_password_hash("1234"), datetime.now().isoformat())
-        )
-    db.commit()
-    db.close()
-
-# initialize DB on startup
-init_db()
-
-# --- 새로 추가: 루트(랜딩) 페이지 ---
+# 루트 경로: 이제 바로 main 페이지로 리다이렉트
 @app.route("/")
 def index():
     return redirect(url_for("main"))
@@ -170,14 +37,18 @@ def register():
         userid = request.form.get("userid", "").strip()
         password = request.form.get("password", "")
         password2 = request.form.get("password2", "")
-        student_no = request.form.get("student_no", "").strip()  # 5자리 학번
+        student_no = request.form.get("student_no", "").strip()
 
         if not userid or not password:
             return render_template("register.html", error="아이디와 비밀번호를 입력하세요.")
         if password != password2:
             return render_template("register.html", error="비밀번호가 일치하지 않습니다.")
-        if len(password) < 4:
-            return render_template("register.html", error="비밀번호는 4자 이상이어야 합니다.")
+        
+        # 서버 측 비밀번호 복잡도 검사 (클라이언트 측과 동일하게)
+        if len(password) < 8:
+            return render_template("register.html", error="비밀번호는 8자 이상이어야 합니다.")
+        if pw_class_count(password) < 3:
+            return render_template("register.html", error="비밀번호는 소문자·대문자·숫자·특수문자 중 3가지 이상을 포함해야 합니다.")
 
         # 학번 유효성 검사: 반드시 5자리 숫자
         if student_no:
@@ -186,23 +57,21 @@ def register():
             # 파싱: 첫자리=학년, 2-3자리=반, 4-5자리=번호
             grade = student_no[0]
             classroom = str(int(student_no[1:3]))  # "01" -> "1"
-            short_no = student_no[3:]
+            # short_no = student_no[3:] # 현재 사용되지 않으므로 제거
         else:
             grade = None
             classroom = None
-            short_no = None
 
-        db = get_db()
+        db = database.get_db()
         try:
             db.execute(
                 "INSERT INTO users (userid, password, grade, classroom, student_no, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (userid, generate_password_hash(password), grade or None, classroom or None, student_no or None, datetime.now().isoformat())
+                (userid, generate_password_hash(password), grade, classroom, student_no, datetime.now().isoformat())
             )
             db.commit()
-        except sqlite3.IntegrityError:
+        except database.sqlite3.IntegrityError:
             return render_template("register.html", error="이미 사용 중인 아이디입니다.")
 
-        # 회원가입 완료 후 자동 로그인 대신 로그인 페이지로 이동
         return redirect(url_for("login"))
 
     return render_template("register.html")
@@ -214,7 +83,7 @@ def login():
         userid = request.form["userid"]
         password = request.form["password"]
 
-        db = get_db()
+        db = database.get_db()
         user = db.execute("SELECT * FROM users WHERE userid = ?", (userid,)).fetchone()
         if user and check_password_hash(user["password"], password):
             # 로그인 성공시 세션에 필요한 정보 저장
@@ -228,25 +97,25 @@ def login():
 # --- main route: 로그인한 학생이면 자동으로 오늘 학급 시간표/급식 미리 로드 ---
 @app.route("/main")
 def main():
-    # 오늘 / 내일 날짜 문자열
+    # 오늘 날짜 문자열
     today = datetime.now()
     date_str = today.strftime("%Y%m%d")
-    tomorrow = (today + timedelta(days=1)).strftime("%Y%m%d")
 
     # 우선적으로 쿼리스트링(수동 조회) -> 세션의 학번 파싱(자동) -> 기본값
     grade = request.args.get("grade")
     classroom = request.args.get("classroom")
 
+    # 로그인한 사용자이고, 게스트 모드가 아니라면 세션의 학번 정보 사용
     if session.get("student_no") and request.args.get("guest") != "1":
         sn = session.get("student_no", "")
         if sn and sn.isdigit() and len(sn) >= 5:
             grade = grade or sn[0]
             classroom = classroom or str(int(sn[1:3]))
 
+    # 기본값 설정
     grade = grade or "1"
     classroom = classroom or "1"
 
-    # 서버에서 오늘과 내일 데이터 로드 (안정성 확보)
     return render_template(
         "main.html",
         grade=grade,
@@ -254,72 +123,60 @@ def main():
         date=date_str
     )
 
-# 로그아웃 라우트 추가 (GET으로 간단 구현)
+# 로그아웃 라우트
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("index"))
+    return redirect(url_for("login")) # 로그아웃 후 로그인 페이지로 이동
 
 # 📌 API 데이터 요청
 @app.route("/api/data", methods=["GET"])
 def api_data():
-    date = request.args.get("date", datetime.now().strftime("%Y%m%d"))
+    date_str = request.args.get("date", datetime.now().strftime("%Y%m%d"))
     grade = request.args.get("grade", "1")
     classroom = request.args.get("classroom", "1")
-    data_type = request.args.get("data_type", "all") # 'meal', 'timetable', 'all'
-    start_offset = int(request.args.get("start_offset", "0")) # 몇 일 뒤부터 시작할지
-    num_days_to_fetch = int(request.args.get("num_days", "10")) # 몇 일치를 가져올지 (기본 10일)
-
+    
     response_data = {}
 
-    if data_type in ["meal", "all"]:
-        try:
-            meal_data = get_meal(date)
-        except Exception:
-            meal_data = []
-        response_data["meal"] = meal_data
+    # 급식 데이터
+    meal_data = neis.get_meal(date_str)
+    response_data["meal"] = meal_data
 
-    if data_type in ["timetable", "all"]:
-        week_data = []
-        try:
-            all_timetable_data = []
-            base_date = datetime.strptime(date, "%Y%m%d")
-            
-            fetched_count = 0
-            # start_offset부터 시작하여 최대 14일 범위 내에서 num_days_to_fetch 만큼의 주중 데이터를 가져옴
-            for i in range(start_offset, start_offset + 14): 
-                if fetched_count >= num_days_to_fetch:
-                    break
+    # 시간표 데이터
+    try:
+        base_date = datetime.strptime(date_str, "%Y%m%d")
+        # 현재 날짜부터 10일치 (주말 제외) 시간표를 가져오기 위해 충분한 기간 설정
+        # 예를 들어, 14일 정도면 10일치 주중 데이터를 얻기에 충분
+        end_date = (base_date + timedelta(days=13)).strftime("%Y%m%d") 
 
-                current_date = base_date + timedelta(days=i)
-                # 주말(토, 일)은 건너뛰기
-                if current_date.weekday() >= 5: # 0=월, 1=화, ..., 4=금, 5=토, 6=일
-                    continue
-                
-                current_date_str = current_date.strftime("%Y%m%d")
-                daily_timetable = get_timetable(current_date_str, grade, classroom)
-                if daily_timetable:
-                    all_timetable_data.extend(daily_timetable)
-                    fetched_count += 1 # 유효한 주중 날짜만 카운트
-            
-            # 중복 제거 및 날짜순 정렬
-            unique_dates = {}
-            for item in all_timetable_data:
-                unique_dates[item['date']] = item
-            
-            week_data = sorted(list(unique_dates.values()), key=lambda x: x['date'])
-
-        except Exception as e:
-            print(f"시간표 데이터 처리 중 오류 발생 ({date}): {e}")
+        all_timetable_data = neis.get_timetable_range(grade, classroom, date_str, end_date)
         
-        response_data["timetable"] = week_data
+        # 주말 제외 및 요청된 날짜부터 10일치만 필터링
+        filtered_timetable = []
+        fetched_count = 0
+        for item in all_timetable_data:
+            current_item_date = datetime.strptime(item['date'], "%Y%m%d")
+            if current_item_date.weekday() < 5: # 주중만 포함 (월=0, 일=6)
+                filtered_timetable.append(item)
+                fetched_count += 1
+            if fetched_count >= 10: # 최대 10일치만 가져옴
+                break
+
+        response_data["timetable"] = filtered_timetable
+
+    except Exception as e:
+        print(f"시간표 데이터 처리 중 오류 발생 ({date_str}): {e}")
+        response_data["timetable"] = []
 
     response_data["grade"] = grade
     response_data["classroom"] = classroom
-    response_data["date"] = date
+    response_data["date"] = date_str
 
     return jsonify(response_data)
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # 캐시 디렉토리가 없으면 생성
+    if not os.path.exists(config.CACHE_DIR):
+        os.makedirs(config.CACHE_DIR)
+    app.run(debug=config.DEBUG)
