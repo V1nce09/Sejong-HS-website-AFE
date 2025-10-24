@@ -597,3 +597,71 @@ body {
   .landing-title { font-size: 1.25rem; }
   .btn { min-width: 100px; padding: 10px 14px; }
 }
+
+/* Interactive Title in Timetable Section */
+.interactive-title {
+    display: flex;
+    align-items: center;
+    font-size: 1.5rem; /* h2 default size */
+    font-weight: bold;
+    margin-top: 0;
+    margin-bottom: 15px; /* 시간표 내용과의 시각적 분리를 위해 추가 */
+    color: #2c3e50;
+}
+
+.interactive-title span {
+    padding-right: 4px; /* '학년', '반' 등의 글자 뒤에 약간의 공간 */
+}
+
+/* 모든 input의 기본 스타일을 텍스트처럼 변경 */
+.interactive-title input {
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    text-align: center;
+}
+
+.interactive-title input:focus {
+    outline: none;
+}
+
+/* 숫자 입력 필드 (학년, 반) */
+.interactive-title input[type="number"] {
+    width: 2ch; /* 두글자 정도의 폭 */
+    -moz-appearance: textfield; /* Firefox에서 스피너 숨기기 */
+}
+
+/* Webkit 브라우저(크롬, 사파리 등)에서 스피너 숨기기 */
+.interactive-title input[type="number"]::-webkit-outer-spin-button,
+.interactive-title input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* 날짜 입력 필드 */
+.interactive-title input[type="date"] {
+    font-size: 0.9em; /* 날짜는 약간 작게 */
+    margin-right: 4px; /* 날짜와 '시간표' 사이 간격 */
+}
+
+/* 날짜 입력 필드 */
+.interactive-title input[type="date"] {
+    font-size: 0.9em; /* 날짜는 약간 작게 */
+    margin-right: 4px; /* 날짜와 '시간표' 사이 간격 */
+}
+
+/* 날짜 입력 필드 */
+.interactive-title input[type="date"] {
+    font-size: 0.9em; /* 날짜는 약간 작게 */
+    margin-right: 4px; /* 날짜와 '시간표' 사이 간격 */
+}
+
+/* 날짜 입력 필드의 달력 아이콘 색상 변경 (브라우저마다 다름) */
+.interactive-title input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.2);
+}
