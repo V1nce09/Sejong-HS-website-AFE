@@ -33,6 +33,28 @@ def init_db():
         created_at TEXT NOT NULL
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS classes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        grade TEXT NOT NULL,
+        classroom TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(session_id, grade, classroom)
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        grade INTEGER NOT NULL,
+        classroom INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        author_id INTEGER NOT NULL, -- users 테이블의 id를 참조
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (author_id) REFERENCES users (id)
+    )
+    """)
     # 기본 관리자 계정 (admin/1234)이 없으면 생성
     cur.execute("SELECT id FROM users WHERE userid = ?", ("admin",))
     if not cur.fetchone():

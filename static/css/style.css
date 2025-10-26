@@ -1,0 +1,58 @@
+/* 내 클래스 항목 스타일 */
+.my-class-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0; /* 간격 증가 */
+    color: #fff;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    cursor: pointer;
+    position: relative;
+}
+
+.my-class-item .class-info {
+    flex-grow: 1;
+    cursor: pointer;
+    font-size: 1.1em; /* 텍스트 크기 증가 */
+}
+
+/* class_detail.html h1 제목 오른쪽 이동 */
+.class-detail-section h1 {
+    padding-left: 40px !important; /* 왼쪽에서 40px만큼 여백을 주어 오른쪽으로 이동 (우선순위 높임) */
+}
+
+/* class_detail.html 제목 아래 가로선 */
+.class-title-divider {
+    border: none; /* 기본 테두리 제거 */
+    border-top: 2px solid black; /* 검은색 2px 두께의 선 */
+    margin: 10px 0 20px 0; /* 위 10px, 좌우 0px, 아래 20px 여백 */
+    width: 80vw; /* 뷰포트 너비의 80% */
+    position: relative; /* left, transform 사용을 위해 */
+    left: 50%; /* 중앙 정렬을 위해 */
+    transform: translateX(-50%); /* 중앙 정렬을 위해 */
+}
+
+/* 클래스 상세 페이지 헤더 (제목 + 버튼) */
+.class-header {
+    display: flex;
+    justify-content: space-between; /* 양 끝 정렬 */
+    align-items: center; /* 세로 중앙 정렬 */
+    padding-right: 20px; /* 오른쪽 여백 */
+    margin-bottom: 10px; /* 아래쪽 여백 */
+}
+
+/* 글쓰기 버튼 스타일 */
+.write-post-btn {
+    background-color: #ff8c00; /* 주황색 배경 */
+    color: white; /* 흰색 텍스트 */
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s ease;
+}
+
+.write-post-btn:hover {
+    background-color: #e07b00; /* 호버 시 약간 어둡게 */
+}

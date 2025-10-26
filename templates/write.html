@@ -2,10 +2,10 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>세종고 통합 포털</title>
+    <title>세종고 통합 포털 - {{ grade }}학년 {{ classroom }}반 글쓰기</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body class="main-page" data-initial-date="{{ date }}" data-initial-grade="{{ grade }}" data-initial-classroom="{{ classroom }}">
+<body>
 <div class="container">
 
     {% if session.get('user') %}
@@ -48,43 +48,34 @@
       <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.2); margin: 10px 0;">
       <ul id="my-classes-list" style="list-style: none; padding: 0; margin-top: 10px;">
         <!-- 동적으로 추가될 클래스 항목들 -->
+        <!-- 예시: <li data-grade="1" data-classroom="1" class="my-class-item">1학년 1반</li> -->
       </ul>
 
     </aside>
 
     <!-- 중앙 -->
-    <main class="timetable-section">
-      <h2 class="interactive-title">
-        <span class="date-picker-wrapper">
-          <input type="date" id="title-date-input" value="{{ date[:4] + '-' + date[4:6] + '-' + date[6:] if date }}" onkeydown="return false;">
-        </span>
-        <input type="number" id="title-grade-input" min="1" max="3" value="{{ grade }}" aria-label="학년">
-        <span>학년</span>
-        <input type="number" id="title-class-input" min="1" max="{{ 10 if grade == '2' else 9 }}" value="{{ classroom }}" aria-label="반">
-        <span>반</span>
-        <span>시간표</span>
-        <span id="timetable-loading" style="visibility:hidden;">로딩 중...</span>
-      </h2>
-      <div id="timetable-data-container"></div>
+    <main class="class-detail-section">
+      <div class="class-header" style="display: flex; justify-content: space-between; align-items: center; padding-right: 20px; margin-bottom: 10px;">
+        <h1 style="padding-left: 40px;">{{ grade }}학년 {{ classroom }}반 글쓰기</h1>
+      </div>
+      <hr class="class-title-divider" style="border: none; border-top: 2px solid black; margin: 10px 0 20px 0; width: 80vw;">
+
+      <form method="POST" style="padding-left: 40px; padding-right: 20px;">
+        <div style="margin-bottom: 15px;">
+          <label for="title" style="display: block; margin-bottom: 5px; font-weight: bold;">제목</label>
+          <input type="text" id="title" name="title" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" required>
+        </div>
+        <div style="margin-bottom: 15px;">
+          <label for="content" style="display: block; margin-bottom: 5px; font-weight: bold;">내용</label>
+          <textarea id="content" name="content" rows="10" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" required></textarea>
+        </div>
+        <div style="text-align: right;">
+          <button type="submit" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em;">작성 완료</button>
+          <button type="button" onclick="history.back()" style="background-color: #f44336; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; margin-left: 10px;">취소</button>
+        </div>
+      </form>
     </main>
 
-    <!-- 우측 -->
-    <aside class="meal-panel">
-      <h2 id="meal-date-display" style="margin-top:0;"><span id="meal-loading" style="display:none;">로딩 중...</span></h2>
-      <div id="meal-content"></div>
-    </aside>
-</div>
-
-<!-- 팝업 구조 -->
-<div id="class-popup-overlay" style="display: none;">
-  <div id="class-popup-content">
-    <h3>새 클래스 추가</h3>
-    <input type="text" id="new-class-name-input" placeholder="초대코드 입력">
-    <div class="button-group">
-      <button id="add-class-submit-btn">확인</button>
-      <button id="add-class-cancel-btn">취소</button>
-    </div>
-  </div>
 </div>
 
 <script src="{{ url_for('static', filename='js/main.js') }}?v={{ cache_buster }}" defer></script>
