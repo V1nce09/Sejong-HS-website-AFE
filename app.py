@@ -7,6 +7,7 @@ import time # time 모듈 추가
 import config
 import database
 import neis
+import crypto_utils
 
 app = Flask(__name__)
 app.config.from_object(config) # config.py에서 설정 로드
@@ -80,11 +81,17 @@ def register():
             grade = None
             classroom = None
 
+        # 학생번호 암호화 (있을 경우) 
+        if student_no:
+            enc_sn = crypto_utils.aesgcm_encrypt(student_no.encode())
+        else:
+            enc_sn = None
+
         db = database.get_db()
         try:
             db.execute(
                 "INSERT INTO users (userid, password, grade, classroom, student_no, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (userid, generate_password_hash(password), grade, classroom, student_no, datetime.now().isoformat())
+                (userid, generate_password_hash(password), grade, classroom, enc_sn, datetime.now().isoformat())
             )
             db.commit()
         except database.sqlite3.IntegrityError:
@@ -106,7 +113,15 @@ def login():
         if user and check_password_hash(user["password"], password):
             # 로그인 성공시 세션에 필요한 정보 저장
             session["user"] = userid
-            session["student_no"] = user["student_no"] or ""
+            # 학생번호 복호화
+            plain_sn = ""
+            enc_sn = user["student_no"] if user["student_no"] is not None else ""
+            if enc_sn:
+                try:
+                    plain_sn = crypto_utils.aesgcm_decrypt(enc_sn).decode()
+                except Exception:
+                    plain_sn = ""
+            session["student_no"] = plain_sn
             session["display_name"] = user["userid"]
             return redirect(url_for("main"))
         return render_template("login.html", error="아이디 또는 비밀번호가 올바르지 않습니다.")

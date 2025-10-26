@@ -1,5 +1,8 @@
 import os
 
+# AES 암호화 키 설정 (환경 변수)
+os.environ['APP_AES_KEY'] = 'dI0rRkx6mTZi--S97R50jDVkLcQgqB5A2dYFGVjMgCY='
+
 # 기본 디렉토리
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
