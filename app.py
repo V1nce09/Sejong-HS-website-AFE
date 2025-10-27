@@ -289,6 +289,9 @@ def api_data():
 # 📌 내 클래스 추가 API
 @app.route("/api/add_class", methods=["POST"])
 def add_class():
+    if g.user is None:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
     grade = request.json.get("grade")
     classroom = request.json.get("classroom")
 
@@ -298,8 +301,8 @@ def add_class():
     db = database.get_db()
     try:
         db.execute(
-            "INSERT INTO classes (session_id, grade, classroom, created_at) VALUES (?, ?, ?, ?)",
-            (g.session_id, grade, classroom, datetime.now().isoformat())
+            "INSERT INTO classes (user_id, grade, classroom, created_at) VALUES (?, ?, ?, ?)",
+            (g.user["id"], grade, classroom, datetime.now().isoformat())
         )
         db.commit()
         return jsonify({"success": True, "message": "클래스가 성공적으로 추가되었습니다."})
@@ -312,10 +315,13 @@ def add_class():
 # 📌 내 클래스 목록 조회 API
 @app.route("/api/my_classes", methods=["GET"])
 def get_my_classes():
+    if g.user is None:
+        return jsonify({"success": True, "classes": []}) # 로그인 안 했으면 빈 목록 반환
+
     db = database.get_db()
     classes = db.execute(
-        "SELECT grade, classroom FROM classes WHERE session_id = ?",
-        (g.session_id,)
+        "SELECT grade, classroom FROM classes WHERE user_id = ?",
+        (g.user["id"],)
     ).fetchall()
 
     # Row 객체를 딕셔너리 리스트로 변환

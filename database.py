@@ -36,11 +36,12 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS classes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
         grade TEXT NOT NULL,
         classroom TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        UNIQUE(session_id, grade, classroom)
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        UNIQUE(user_id, grade, classroom)
     )
     """)
     cur.execute("""
