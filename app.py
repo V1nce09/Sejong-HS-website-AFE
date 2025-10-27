@@ -12,6 +12,10 @@ import crypto_utils
 app = Flask(__name__)
 app.config.from_object(config) # config.py에서 설정 로드
 
+# 캐시 디렉토리가 없으면 생성 (PythonAnywhere 같은 WSGI 서버 환경을 위함)
+if not os.path.exists(config.CACHE_DIR):
+    os.makedirs(config.CACHE_DIR)
+
 # 데이터베이스 초기화 및 teardown 등록
 database.init_app(app)
 
@@ -330,7 +334,4 @@ def get_my_classes():
     return jsonify({"success": True, "classes": my_classes})
 
 if __name__ == "__main__":
-    # 캐시 디렉토리가 없으면 생성
-    if not os.path.exists(config.CACHE_DIR):
-        os.makedirs(config.CACHE_DIR)
     app.run(debug=config.DEBUG)
