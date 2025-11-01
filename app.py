@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, session, g
+from flask import Flask, render_template, request, redirect, url_for, jsonify, session, g, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import os
 import time # time 모듈 추가
+import hashlib
 
 import config
 import database
@@ -45,6 +46,15 @@ def pw_class_count(password):
     if any(c.isdigit() for c in password): count += 1
     if any(not c.isalnum() for c in password): count += 1 # 특수문자
     return count
+
+def generate_invite_code(grade, classroom):
+    """학년, 반, 비밀키를 조합하여 고유한 초대 코드를 생성합니다."""
+    secret = app.config.get("SECRET_KEY", "default-secret")
+    # SECRET_KEY가 None일 경우를 대비하여 기본값 제공
+    if not secret:
+        secret = "default-secret-for-testing"
+    data = f"{secret}-{grade}-{classroom}"
+    return hashlib.sha256(data.encode()).hexdigest()[:6].upper()
 
 # --- 라우트 정의 ---
 
@@ -171,8 +181,28 @@ def logout():
 # 📌 클래스 상세 페이지
 @app.route("/class/<grade>-<classroom>")
 def class_detail(grade, classroom):
-    grade = grade if grade is not None else "1"
-    classroom = classroom if classroom is not None else "1"
+    try:
+        grade_num = int(grade)
+        class_num = int(classroom)
+        if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
+            flash("존재하지 않는 학급입니다.")
+            return redirect(url_for("main"))
+    except ValueError:
+        flash("유효하지 않은 학급 경로입니다.")
+        return redirect(url_for("main"))
+
+    # 초대 코드 검사
+    unlocked_classes = session.get('unlocked_classes', [])
+    class_identifier = f"{grade}-{classroom}"
+
+    # 관리자가 아니고, 아직 잠금 해제되지 않은 클래스인 경우
+    if g.user and g.user['userid'] != 'admin' and class_identifier not in unlocked_classes:
+        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+    # 비로그인 사용자는 무조건 잠금 해제 페이지로
+    elif not g.user and class_identifier not in unlocked_classes:
+        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+
+    db = database.get_db()
 
     db = database.get_db()
     posts = db.execute(
@@ -194,6 +224,16 @@ def class_detail(grade, classroom):
 # 📌 글쓰기 페이지
 @app.route("/class/<grade>-<classroom>/write", methods=["GET", "POST"])
 def write_post(grade, classroom):
+    try:
+        grade_num = int(grade)
+        class_num = int(classroom)
+        if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
+            flash("존재하지 않는 학급입니다.")
+            return redirect(url_for("main"))
+    except ValueError:
+        flash("유효하지 않은 학급 경로입니다.")
+        return redirect(url_for("main"))
+
     if g.user is None: # 로그인하지 않은 사용자는 글쓰기 불가
         return redirect(url_for("login"))
 
@@ -223,6 +263,16 @@ def write_post(grade, classroom):
 # 📌 게시물 상세 페이지
 @app.route("/class/<grade>-<classroom>/post/<int:post_id>")
 def post_detail(grade, classroom, post_id):
+    try:
+        grade_num = int(grade)
+        class_num = int(classroom)
+        if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
+            flash("존재하지 않는 학급입니다.")
+            return redirect(url_for("main"))
+    except ValueError:
+        flash("유효하지 않은 학급 경로입니다.")
+        return redirect(url_for("main"))
+
     db = database.get_db()
     post = db.execute(
         "SELECT p.id, p.title, p.content, p.created_at, u.name as author_name "
@@ -241,6 +291,38 @@ def post_detail(grade, classroom, post_id):
         post=post,
         cache_buster=int(time.time())
     )
+
+# 📌 초대 코드로 클래스 잠금 해제
+@app.route("/class/unlock", methods=["GET", "POST"])
+def unlock_class():
+    grade = request.args.get("grade")
+    classroom = request.args.get("classroom")
+
+    if not grade or not classroom:
+        flash("잘못된 접근입니다.")
+        return redirect(url_for("main"))
+
+    if request.method == "POST":
+        submitted_code = request.form.get("invite_code", "").upper()
+        correct_code = generate_invite_code(grade, classroom)
+
+        if submitted_code == correct_code:
+            unlocked_classes = session.get('unlocked_classes', [])
+            class_identifier = f"{grade}-{classroom}"
+            if class_identifier not in unlocked_classes:
+                unlocked_classes.append(class_identifier)
+                session['unlocked_classes'] = unlocked_classes
+            
+            # 관리자에게는 초대 코드 생성 방법을 안내
+            if g.user and g.user['userid'] == 'admin':
+                flash(f'{grade}학년 {classroom}반의 초대 코드는 \'{correct_code}\'입니다. 학생들에게 이 코드를 알려주세요.', 'info')
+
+            return redirect(url_for("class_detail", grade=grade, classroom=classroom))
+        else:
+            flash("초대 코드가 올바르지 않습니다.")
+    
+    # GET 요청이거나 POST에서 코드가 틀렸을 경우
+    return render_template("unlock_class.html", grade=grade, classroom=classroom)
 
 # 📌 API 데이터 요청
 @app.route("/api/data", methods=["GET"])

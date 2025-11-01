@@ -844,3 +844,28 @@ body {
 .btn-list:hover {
     background-color: #2980b9;
 }
+
+/* Flashed Messages */
+.flash-messages {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    width: 80%;
+    max-width: 600px;
+}
+
+.flash-message {
+    background-color: #d9534f; /* Bootstrap's danger color */
+    color: white;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+.flash-message.info {
+    background-color: #5bc0de; /* Bootstrap's info color */
+}
