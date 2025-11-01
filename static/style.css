@@ -76,7 +76,7 @@ body {
     width: 220px;
     background: #2c3e50;
     color: white;
-    padding: 20px;
+    padding: 20px 20px 120px; /* Add extra bottom padding to avoid overlap with profile UI */
     display: flex; /* Add flex display */
     flex-direction: column; /* Arrange items vertically */
 }
@@ -804,7 +804,7 @@ body {
     margin: 0; /* Margin is now handled by post-container */
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    min-height: 65vh; /* Set a minimum height */
+    min-height: 60vh; /* Set a minimum height */
 }
 
 .post-title {
