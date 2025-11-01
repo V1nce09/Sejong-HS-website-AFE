@@ -770,7 +770,7 @@ body {
 
 /* Post Detail View */
 .post-container {
-    padding: 0 20px;
+    padding: 0 20px 40px; /* Add 40px bottom padding */
 }
 
 .btn-back {

@@ -8,7 +8,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Flask 설정
 SECRET_KEY = os.getenv('SECRET_KEY')  # 실제 운영 환경에서는 더 복잡하고 안전한 키를 사용해야 합니다.
-DEBUG = True
+DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
 
 # 데이터베이스 설정
 DATABASE_PATH = os.path.join(BASE_DIR, "users.db")
