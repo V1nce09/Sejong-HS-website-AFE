@@ -373,28 +373,65 @@ def api_data():
 
     return jsonify(response_data)
 
-# 📌 내 클래스 추가 API
-@app.route("/api/add_class", methods=["POST"])
-def add_class():
+
+
+# 📌 [NEW] 초대 코드로 내 클래스 추가 API
+@app.route("/api/add_class_by_code", methods=["POST"])
+def add_class_by_code():
     if g.user is None:
         return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
 
-    grade = request.json.get("grade")
-    classroom = request.json.get("classroom")
+    submitted_code = request.json.get("invite_code", "").upper()
+    if not submitted_code or len(submitted_code) != 6:
+        return jsonify({"success": False, "message": "초대 코드는 6자리여야 합니다."}), 400
 
-    if not grade or not classroom:
-        return jsonify({"success": False, "message": "학년과 반 정보를 입력해주세요."}), 400
+    # 모든 유효한 학급에 대해 코드를 생성하여 일치하는 것을 찾음
+    found_class = None
+    for grade_num in range(1, 4):
+        for class_num in range(1, 11):
+            # 유효성 검사 (1-3학년, 1-10반)
+            if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
+                 continue
 
+            grade_str = str(grade_num)
+            class_str = str(class_num)
+            correct_code = generate_invite_code(grade_str, class_str)
+            if correct_code == submitted_code:
+                found_class = {"grade": grade_str, "classroom": class_str}
+                break
+        if found_class:
+            break
+
+    if not found_class:
+        return jsonify({"success": False, "message": "초대 코드가 올바르지 않습니다."}), 404
+
+    # 찾았으면 DB에 추가 및 세션 업데이트
     db = database.get_db()
     try:
+        # 1. DB에 "내 클래스"로 추가
         db.execute(
             "INSERT INTO classes (user_id, grade, classroom, created_at) VALUES (?, ?, ?, ?)",
-            (g.user["id"], grade, classroom, datetime.now().isoformat())
+            (g.user["id"], found_class["grade"], found_class["classroom"], datetime.now().isoformat())
         )
         db.commit()
+
+        # 2. 세션에 "잠금 해제" 상태 추가
+        unlocked_classes = session.get('unlocked_classes', [])
+        class_identifier = f"{found_class['grade']}-{found_class['classroom']}"
+        if class_identifier not in unlocked_classes:
+            unlocked_classes.append(class_identifier)
+            session['unlocked_classes'] = unlocked_classes
+
         return jsonify({"success": True, "message": "클래스가 성공적으로 추가되었습니다."})
+
     except database.sqlite3.IntegrityError:
-        return jsonify({"success": False, "message": "이미 추가된 클래스입니다."}), 409
+        # 이미 "내 클래스"에 있는 경우, 잠금 해제만 처리
+        unlocked_classes = session.get('unlocked_classes', [])
+        class_identifier = f"{found_class['grade']}-{found_class['classroom']}"
+        if class_identifier not in unlocked_classes:
+            unlocked_classes.append(class_identifier)
+            session['unlocked_classes'] = unlocked_classes
+        return jsonify({"success": True, "message": "이미 추가된 클래스입니다."})
     except Exception as e:
         print(f"클래스 추가 중 오류 발생: {e}")
         return jsonify({"success": False, "message": "클래스 추가 중 오류가 발생했습니다."}), 500
