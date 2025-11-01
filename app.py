@@ -33,7 +33,7 @@ def load_logged_in_user_and_session():
     else:
         db = database.get_db()
         g.user = db.execute(
-            "SELECT id, userid, password, grade, classroom, student_no FROM users WHERE userid = ?", (user_id,)
+            "SELECT id, userid, password, name, grade, classroom, student_no FROM users WHERE userid = ?", (user_id,)
         ).fetchone()
 
 # --- 헬퍼 함수 ---
@@ -58,12 +58,13 @@ def index():
 def register():
     if request.method == "POST":
         userid = request.form.get("userid", "").strip()
+        name = request.form.get("name", "").strip()
         password = request.form.get("password", "")
         password2 = request.form.get("password2", "")
         student_no = request.form.get("student_no", "").strip()
 
-        if not userid or not password:
-            return render_template("register.html", error="아이디와 비밀번호를 입력하세요.")
+        if not userid or not password or not name:
+            return render_template("register.html", error="아이디, 이름, 비밀번호를 모두 입력하세요.")
         if password != password2:
             return render_template("register.html", error="비밀번호가 일치하지 않습니다.")
         
@@ -94,8 +95,8 @@ def register():
         db = database.get_db()
         try:
             db.execute(
-                "INSERT INTO users (userid, password, grade, classroom, student_no, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (userid, generate_password_hash(password), grade, classroom, enc_sn, datetime.now().isoformat())
+                "INSERT INTO users (userid, name, password, grade, classroom, student_no, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (userid, name, generate_password_hash(password), grade, classroom, enc_sn, datetime.now().isoformat())
             )
             db.commit()
         except database.sqlite3.IntegrityError:
@@ -126,7 +127,7 @@ def login():
                 except Exception:
                     plain_sn = ""
             session["student_no"] = plain_sn
-            session["display_name"] = user["userid"]
+            session["display_name"] = user["name"]
             return redirect(url_for("main"))
         return render_template("login.html", error="아이디 또는 비밀번호가 올바르지 않습니다.")
     return render_template("login.html")
@@ -175,7 +176,7 @@ def class_detail(grade, classroom):
 
     db = database.get_db()
     posts = db.execute(
-        "SELECT p.id, p.title, p.created_at, u.userid as author_userid "
+        "SELECT p.id, p.title, p.created_at, u.name as author_name "
         "FROM posts p JOIN users u ON p.author_id = u.id "
         "WHERE p.grade = ? AND p.classroom = ? "
         "ORDER BY p.created_at DESC",
@@ -224,7 +225,7 @@ def write_post(grade, classroom):
 def post_detail(grade, classroom, post_id):
     db = database.get_db()
     post = db.execute(
-        "SELECT p.id, p.title, p.content, p.created_at, u.userid as author_userid "
+        "SELECT p.id, p.title, p.content, p.created_at, u.name as author_name "
         "FROM posts p JOIN users u ON p.author_id = u.id "
         "WHERE p.id = ?",
         (post_id,)

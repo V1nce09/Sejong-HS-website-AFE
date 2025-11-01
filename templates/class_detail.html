@@ -68,7 +68,7 @@
             {% for post in posts %}
               <li style="border-bottom: 1px solid #eee; padding: 10px 0; background-color: white; border-radius: 8px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                 <a href="/class/{{ grade }}-{{ classroom }}/post/{{ post.id }}" style="text-decoration: none; color: #333; font-weight: bold;">{{ post.title }}</a>
-                <span style="font-size: 0.8em; color: #666; margin-left: 10px;">작성자: {{ post.author_userid }} | {{ post.created_at.split('T')[0] }}</span>
+                <span style="font-size: 0.8em; color: #666; margin-left: 10px;">작성자: {{ post.author_name }} | {{ post.created_at.split('T')[0] }}</span>
               </li>
             {% endfor %}
           </ul>
