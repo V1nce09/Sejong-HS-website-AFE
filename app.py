@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import os
 import time # time 모듈 추가
 import hashlib
+import bleach
 
 import config
 import database
@@ -326,11 +327,16 @@ def post_detail(grade, classroom, post_id):
     if post is None:
         return "게시물을 찾을 수 없습니다.", 404
 
+    # XSS 방지를 위해 bleach로 content를 소독하고, 줄바꿈을 <br>로 변환
+    sanitized_content = bleach.clean(post['content'])
+    formatted_content = sanitized_content.replace('\n', '<br>')
+
     return render_template(
         "post_detail.html",
         grade=grade,
         classroom=classroom,
         post=post,
+        formatted_content=formatted_content, # 소독된 내용을 전달
         cache_buster=int(time.time())
     )
 

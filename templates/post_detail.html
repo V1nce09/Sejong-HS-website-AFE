@@ -70,7 +70,7 @@
             </div>
             <hr class="post-divider">
             <div class="post-content">
-                {{ post.content | replace('\n', '<br>') | safe }}
+                {{ formatted_content | safe }}
             </div>
         </div>
       </div>
