@@ -149,20 +149,40 @@ def main():
     today = datetime.now()
     date_str = today.strftime("%Y%m%d")
 
-    # 우선적으로 쿼리스트링(수동 조회) -> 세션의 학번 파싱(자동) -> 기본값
     grade = request.args.get("grade")
     classroom = request.args.get("classroom")
 
-    # 로그인한 사용자이고, 게스트 모드가 아니라면 세션의 학번 정보 사용
-    if session.get("student_no") and request.args.get("guest") != "1":
-        sn = session.get("student_no", "")
-        if sn and sn.isdigit() and len(sn) >= 5:
-            grade = grade or sn[0]
-            classroom = classroom or str(int(sn[1:3]))
+    # URL 인자로 특정 학급이 명시된 경우, 권한 검사를 수행
+    if grade and classroom:
+        try:
+            grade_num, class_num = int(grade), int(classroom)
+            if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
+                flash("존재하지 않는 학급입니다.")
+                return redirect(url_for("main")) # 인자 없이 메인으로
+        except ValueError:
+            flash("유효하지 않은 학급 정보입니다.")
+            return redirect(url_for("main"))
 
-    # 기본값 설정
-    grade = grade if grade is not None else "1"
-    classroom = classroom if classroom is not None else "1"
+        # 초대 코드 검사
+        unlocked_classes = session.get('unlocked_classes', [])
+        class_identifier = f"{grade}-{classroom}"
+        is_admin = g.user and g.user['userid'] == 'admin'
+
+        if not is_admin and class_identifier not in unlocked_classes:
+            return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+        # 권한이 있으면, 해당 학급으로 페이지를 렌더링
+
+    # URL 인자가 없으면, 기존의 기본값 로직을 따름
+    else:
+        if session.get("student_no") and request.args.get("guest") != "1":
+            sn = session.get("student_no", "")
+            if sn and sn.isdigit() and len(sn) >= 5:
+                grade = grade or sn[0]
+                classroom = classroom or str(int(sn[1:3]))
+        
+        # 기본값 설정
+        grade = grade if grade is not None else "1"
+        classroom = classroom if classroom is not None else "1"
 
     return render_template(
         "main.html",
@@ -202,6 +222,11 @@ def class_detail(grade, classroom):
     elif not g.user and class_identifier not in unlocked_classes:
         return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
 
+    # 관리자에게는 현재 클래스의 초대 코드를 항상 보여줌
+    if g.user and g.user['userid'] == 'admin':
+        correct_code = generate_invite_code(grade, classroom)
+        flash(f'{grade}학년 {classroom}반의 초대 코드는 \'{correct_code}\'입니다. 학생들에게 이 코드를 알려주세요.', 'info')
+
     db = database.get_db()
 
     db = database.get_db()
@@ -233,6 +258,15 @@ def write_post(grade, classroom):
     except ValueError:
         flash("유효하지 않은 학급 경로입니다.")
         return redirect(url_for("main"))
+
+    # 초대 코드 검사 (class_detail과 동일)
+    unlocked_classes = session.get('unlocked_classes', [])
+    class_identifier = f"{grade}-{classroom}"
+    is_admin = g.user and g.user['userid'] == 'admin'
+
+    if not is_admin and class_identifier not in unlocked_classes:
+        # 글쓰기는 로그인 사용자만 가능하므로, 비로그인 경우는 class_detail에서 이미 처리됨
+        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
 
     if g.user is None: # 로그인하지 않은 사용자는 글쓰기 불가
         return redirect(url_for("login"))
@@ -273,6 +307,14 @@ def post_detail(grade, classroom, post_id):
         flash("유효하지 않은 학급 경로입니다.")
         return redirect(url_for("main"))
 
+    # 초대 코드 검사 (class_detail과 동일)
+    unlocked_classes = session.get('unlocked_classes', [])
+    class_identifier = f"{grade}-{classroom}"
+    is_admin = g.user and g.user['userid'] == 'admin'
+
+    if not is_admin and class_identifier not in unlocked_classes:
+        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+
     db = database.get_db()
     post = db.execute(
         "SELECT p.id, p.title, p.content, p.created_at, u.name as author_name "
@@ -312,10 +354,6 @@ def unlock_class():
             if class_identifier not in unlocked_classes:
                 unlocked_classes.append(class_identifier)
                 session['unlocked_classes'] = unlocked_classes
-            
-            # 관리자에게는 초대 코드 생성 방법을 안내
-            if g.user and g.user['userid'] == 'admin':
-                flash(f'{grade}학년 {classroom}반의 초대 코드는 \'{correct_code}\'입니다. 학생들에게 이 코드를 알려주세요.', 'info')
 
             return redirect(url_for("class_detail", grade=grade, classroom=classroom))
         else:
@@ -442,6 +480,15 @@ def get_my_classes():
     if g.user is None:
         return jsonify({"success": True, "classes": []}) # 로그인 안 했으면 빈 목록 반환
 
+    # 관리자에게는 모든 클래스 목록을 반환
+    if g.user['userid'] == 'admin':
+        all_classes = []
+        for grade_num in range(1, 4):
+            for class_num in range(1, 11):
+                all_classes.append({"grade": str(grade_num), "classroom": str(class_num)})
+        return jsonify({"success": True, "classes": all_classes})
+
+    # 일반 사용자는 DB에서 조회
     db = database.get_db()
     classes = db.execute(
         "SELECT grade, classroom FROM classes WHERE user_id = ?",
