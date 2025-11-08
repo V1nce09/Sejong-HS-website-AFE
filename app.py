@@ -2,7 +2,11 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify, s
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import os
+<<<<<<< HEAD
 import time
+=======
+import time # time 모듈 추가
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
 import hashlib
 import bleach
 
@@ -14,11 +18,19 @@ import crypto_utils
 app = Flask(__name__)
 app.config.from_object(config)
 
+<<<<<<< HEAD
 # 캐시 디렉토리가 없으면 생성
 if not os.path.exists(config.CACHE_DIR):
     os.makedirs(config.CACHE_DIR)
 
 # 데이터베이스 초기화
+=======
+# 캐시 디렉토리가 없으면 생성 (PythonAnywhere 같은 WSGI 서버 환경을 위함)
+if not os.path.exists(config.CACHE_DIR):
+    os.makedirs(config.CACHE_DIR)
+
+# 데이터베이스 초기화 및 teardown 등록
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
 database.init_app(app)
 
 @app.before_request
@@ -33,8 +45,12 @@ def load_logged_in_user_and_session():
     else:
         db = database.get_db()
         g.user = db.execute(
+<<<<<<< HEAD
             "SELECT id, userid, password, name, grade, classroom, student_no FROM users WHERE userid = ?",
             (user_id,)
+=======
+            "SELECT id, userid, password, name, grade, classroom, student_no FROM users WHERE userid = ?", (user_id,)
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
         ).fetchone()
 
 # --- 헬퍼 ---
@@ -47,11 +63,23 @@ def pw_class_count(password):
     return cnt
 
 def generate_invite_code(grade, classroom):
+<<<<<<< HEAD
     secret = app.config.get("SECRET_KEY", "default-secret") or "default-secret-for-testing"
     data = f"{secret}-{grade}-{classroom}"
     return hashlib.sha256(data.encode()).hexdigest()[:6].upper()
 
 # --- 라우트 ---
+=======
+    """학년, 반, 비밀키를 조합하여 고유한 초대 코드를 생성합니다."""
+    secret = app.config.get("SECRET_KEY", "default-secret")
+    # SECRET_KEY가 None일 경우를 대비하여 기본값 제공
+    if not secret:
+        secret = "default-secret-for-testing"
+    data = f"{secret}-{grade}-{classroom}"
+    return hashlib.sha256(data.encode()).hexdigest()[:6].upper()
+
+# --- 라우트 정의 ---
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
 
 @app.route("/")
 def index():
@@ -131,27 +159,53 @@ def main():
     grade = request.args.get("grade")
     classroom = request.args.get("classroom")
 
+<<<<<<< HEAD
+=======
+    # URL 인자로 특정 학급이 명시된 경우, 권한 검사를 수행
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
     if grade and classroom:
         try:
             grade_num, class_num = int(grade), int(classroom)
             if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
                 flash("존재하지 않는 학급입니다.")
+<<<<<<< HEAD
                 return redirect(url_for("main"))
+=======
+                return redirect(url_for("main")) # 인자 없이 메인으로
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
         except ValueError:
             flash("유효하지 않은 학급 정보입니다.")
             return redirect(url_for("main"))
 
+<<<<<<< HEAD
         unlocked_classes = session.get('unlocked_classes', [])
         class_identifier = f"{grade}-{classroom}"
         is_admin = g.user and g.user['userid'] == 'admin'
         if not is_admin and class_identifier not in unlocked_classes:
             return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+=======
+        # 초대 코드 검사
+        unlocked_classes = session.get('unlocked_classes', [])
+        class_identifier = f"{grade}-{classroom}"
+        is_admin = g.user and g.user['userid'] == 'admin'
+
+        if not is_admin and class_identifier not in unlocked_classes:
+            return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+        # 권한이 있으면, 해당 학급으로 페이지를 렌더링
+
+    # URL 인자가 없으면, 기존의 기본값 로직을 따름
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
     else:
         if session.get("student_no") and request.args.get("guest") != "1":
             sn = session.get("student_no", "")
             if sn and sn.isdigit() and len(sn) >= 5:
                 grade = grade or sn[0]
                 classroom = classroom or str(int(sn[1:3]))
+<<<<<<< HEAD
+=======
+        
+        # 기본값 설정
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
         grade = grade if grade is not None else "1"
         classroom = classroom if classroom is not None else "1"
 
@@ -182,6 +236,7 @@ def class_detail(grade, classroom):
         flash("유효하지 않은 학급 경로입니다.")
         return redirect(url_for("main"))
 
+<<<<<<< HEAD
     unlocked_classes = session.get('unlocked_classes', [])
     class_identifier = f"{grade}-{classroom}"
 
@@ -197,6 +252,29 @@ def class_detail(grade, classroom):
     db = database.get_db()
     posts = db.execute(
         "SELECT p.id, p.title, p.created_at, p.is_pinned, p.pinned_at, u.name as author_name "
+=======
+    # 초대 코드 검사
+    unlocked_classes = session.get('unlocked_classes', [])
+    class_identifier = f"{grade}-{classroom}"
+
+    # 관리자가 아니고, 아직 잠금 해제되지 않은 클래스인 경우
+    if g.user and g.user['userid'] != 'admin' and class_identifier not in unlocked_classes:
+        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+    # 비로그인 사용자는 무조건 잠금 해제 페이지로
+    elif not g.user and class_identifier not in unlocked_classes:
+        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+
+    # 관리자에게는 현재 클래스의 초대 코드를 항상 보여줌
+    if g.user and g.user['userid'] == 'admin':
+        correct_code = generate_invite_code(grade, classroom)
+        flash(f'{grade}학년 {classroom}반의 초대 코드는 \'{correct_code}\'입니다. 학생들에게 이 코드를 알려주세요.', 'info')
+
+    db = database.get_db()
+
+    db = database.get_db()
+    posts = db.execute(
+        "SELECT p.id, p.title, p.created_at, u.name as author_name "
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
         "FROM posts p JOIN users u ON p.author_id = u.id "
         "WHERE p.grade = ? AND p.classroom = ? "
         "ORDER BY p.is_pinned DESC, COALESCE(p.pinned_at, p.created_at) DESC, p.created_at DESC",
@@ -224,14 +302,25 @@ def write_post(grade, classroom):
         flash("유효하지 않은 학급 경로입니다.")
         return redirect(url_for("main"))
 
+<<<<<<< HEAD
+=======
+    # 초대 코드 검사 (class_detail과 동일)
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
     unlocked_classes = session.get('unlocked_classes', [])
     class_identifier = f"{grade}-{classroom}"
     is_admin = g.user and g.user['userid'] == 'admin'
 
     if not is_admin and class_identifier not in unlocked_classes:
+<<<<<<< HEAD
         return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
 
     if g.user is None:
+=======
+        # 글쓰기는 로그인 사용자만 가능하므로, 비로그인 경우는 class_detail에서 이미 처리됨
+        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+
+    if g.user is None: # 로그인하지 않은 사용자는 글쓰기 불가
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
         return redirect(url_for("login"))
 
     if request.method == "POST":
@@ -262,6 +351,10 @@ def post_detail(grade, classroom, post_id):
         flash("유효하지 않은 학급 경로입니다.")
         return redirect(url_for("main"))
 
+<<<<<<< HEAD
+=======
+    # 초대 코드 검사 (class_detail과 동일)
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
     unlocked_classes = session.get('unlocked_classes', [])
     class_identifier = f"{grade}-{classroom}"
     is_admin = g.user and g.user['userid'] == 'admin'
@@ -271,7 +364,11 @@ def post_detail(grade, classroom, post_id):
 
     db = database.get_db()
     post = db.execute(
+<<<<<<< HEAD
         "SELECT p.id, p.title, p.content, p.created_at, p.is_pinned, p.pinned_at, u.name as author_name "
+=======
+        "SELECT p.id, p.title, p.content, p.created_at, u.name as author_name "
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
         "FROM posts p JOIN users u ON p.author_id = u.id "
         "WHERE p.id = ?",
         (post_id,)
@@ -280,6 +377,10 @@ def post_detail(grade, classroom, post_id):
     if post is None:
         return "게시물을 찾을 수 없습니다.", 404
 
+<<<<<<< HEAD
+=======
+    # XSS 방지를 위해 bleach로 content를 소독하고, 줄바꿈을 <br>로 변환
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
     sanitized_content = bleach.clean(post['content'])
     formatted_content = sanitized_content.replace('\n', '<br>')
 
@@ -288,6 +389,7 @@ def post_detail(grade, classroom, post_id):
         grade=grade,
         classroom=classroom,
         post=post,
+<<<<<<< HEAD
         formatted_content=formatted_content,
         cache_buster=int(time.time())
     )
@@ -339,6 +441,13 @@ def toggle_pin_post(grade, classroom, post_id):
     return redirect(next_url)
 
 # 초대 코드 잠금 해제
+=======
+        formatted_content=formatted_content, # 소독된 내용을 전달
+        cache_buster=int(time.time())
+    )
+
+# 📌 초대 코드로 클래스 잠금 해제
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
 @app.route("/class/unlock", methods=["GET", "POST"])
 def unlock_class():
     grade = request.args.get("grade")
@@ -358,6 +467,7 @@ def unlock_class():
             if class_identifier not in unlocked_classes:
                 unlocked_classes.append(class_identifier)
                 session['unlocked_classes'] = unlocked_classes
+<<<<<<< HEAD
             return redirect(url_for("class_detail", grade=grade, classroom=classroom))
         else:
             flash("초대 코드가 올바르지 않습니다.")
@@ -365,6 +475,17 @@ def unlock_class():
     return render_template("unlock_class.html", grade=grade, classroom=classroom)
 
 # API: 급식/시간표
+=======
+
+            return redirect(url_for("class_detail", grade=grade, classroom=classroom))
+        else:
+            flash("초대 코드가 올바르지 않습니다.")
+    
+    # GET 요청이거나 POST에서 코드가 틀렸을 경우
+    return render_template("unlock_class.html", grade=grade, classroom=classroom)
+
+# 📌 API 데이터 요청
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
 @app.route("/api/data", methods=["GET"])
 def api_data():
     date_str = request.args.get("date", datetime.now().strftime("%Y%m%d"))
@@ -400,6 +521,7 @@ def api_data():
     response_data["date"] = date_str
     return jsonify(response_data)
 
+<<<<<<< HEAD
 # [NEW] 초대 코드로 내 클래스 추가
 @app.route("/api/add_class_by_code", methods=["POST"])
 def add_class_by_code():
@@ -424,21 +546,70 @@ def add_class_by_code():
 
     if not found_class:
         return jsonify({"success": False, "message": "초대 코드가 올바르지 않습니다."}), 404
+=======
 
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
+
+# 📌 [NEW] 초대 코드로 내 클래스 추가 API
+@app.route("/api/add_class_by_code", methods=["POST"])
+def add_class_by_code():
+    if g.user is None:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
+    submitted_code = request.json.get("invite_code", "").upper()
+    if not submitted_code or len(submitted_code) != 6:
+        return jsonify({"success": False, "message": "초대 코드는 6자리여야 합니다."}), 400
+
+    # 모든 유효한 학급에 대해 코드를 생성하여 일치하는 것을 찾음
+    found_class = None
+    for grade_num in range(1, 4):
+        for class_num in range(1, 11):
+            # 유효성 검사 (1-3학년, 1-10반)
+            if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
+                 continue
+
+            grade_str = str(grade_num)
+            class_str = str(class_num)
+            correct_code = generate_invite_code(grade_str, class_str)
+            if correct_code == submitted_code:
+                found_class = {"grade": grade_str, "classroom": class_str}
+                break
+        if found_class:
+            break
+
+    if not found_class:
+        return jsonify({"success": False, "message": "초대 코드가 올바르지 않습니다."}), 404
+
+    # 찾았으면 DB에 추가 및 세션 업데이트
     db = database.get_db()
     try:
+        # 1. DB에 "내 클래스"로 추가
         db.execute(
             "INSERT INTO classes (user_id, grade, classroom, created_at) VALUES (?, ?, ?, ?)",
             (g.user["id"], found_class["grade"], found_class["classroom"], datetime.now().isoformat())
         )
         db.commit()
+<<<<<<< HEAD
+=======
+
+        # 2. 세션에 "잠금 해제" 상태 추가
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
         unlocked_classes = session.get('unlocked_classes', [])
         class_identifier = f"{found_class['grade']}-{found_class['classroom']}"
         if class_identifier not in unlocked_classes:
             unlocked_classes.append(class_identifier)
             session['unlocked_classes'] = unlocked_classes
+<<<<<<< HEAD
+=======
+
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
         return jsonify({"success": True, "message": "클래스가 성공적으로 추가되었습니다."})
+
     except database.sqlite3.IntegrityError:
+<<<<<<< HEAD
+=======
+        # 이미 "내 클래스"에 있는 경우, 잠금 해제만 처리
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
         unlocked_classes = session.get('unlocked_classes', [])
         class_identifier = f"{found_class['grade']}-{found_class['classroom']}"
         if class_identifier not in unlocked_classes:
@@ -453,8 +624,14 @@ def add_class_by_code():
 @app.route("/api/my_classes", methods=["GET"])
 def get_my_classes():
     if g.user is None:
+<<<<<<< HEAD
         return jsonify({"success": True, "classes": []})
 
+=======
+        return jsonify({"success": True, "classes": []}) # 로그인 안 했으면 빈 목록 반환
+
+    # 관리자에게는 모든 클래스 목록을 반환
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
     if g.user['userid'] == 'admin':
         all_classes = []
         for grade_num in range(1, 4):
@@ -462,6 +639,10 @@ def get_my_classes():
                 all_classes.append({"grade": str(grade_num), "classroom": str(class_num)})
         return jsonify({"success": True, "classes": all_classes})
 
+<<<<<<< HEAD
+=======
+    # 일반 사용자는 DB에서 조회
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
     db = database.get_db()
     classes = db.execute(
         "SELECT grade, classroom FROM classes WHERE user_id = ?",
@@ -471,4 +652,8 @@ def get_my_classes():
     return jsonify({"success": True, "classes": my_classes})
 
 if __name__ == "__main__":
+<<<<<<< HEAD
     app.run(debug=config.DEBUG)
+=======
+    app.run(debug=config.DEBUG)
+>>>>>>> b6d107aab70b91aa4833b663fb4982a0e52ac1b6
