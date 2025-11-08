@@ -439,43 +439,24 @@
             // 클래스 추가 (확인 버튼 클릭 시)
             if (addClassSubmitBtn && newClassNameInput) {
                 addClassSubmitBtn.addEventListener('click', async () => {
-                    const invitationCode = newClassNameInput.value.trim();
+                    const invitationCode = newClassNameInput.value.trim().toUpperCase();
                     if (!invitationCode) {
                         alert('초대코드를 입력해주세요.');
                         return;
                     }
 
-                    // 초대코드 유효성 검사 (예: 2자리 숫자)
-                    if (!/^\d{2}$/.test(invitationCode)) {
-                        alert('초대코드는 2자리 숫자(학년+반)여야 합니다. 예: 11 (1학년 1반)');
-                        return;
-                    }
-
-                    const grade = parseInt(invitationCode.charAt(0), 10);
-                    const classroom = parseInt(invitationCode.charAt(1), 10);
-
-                    let maxClassroom;
-                    if (grade === 2) {
-                        maxClassroom = 10;
-                    } else if (grade === 1 || grade === 3) {
-                        maxClassroom = 9;
-                    } else {
-                        alert('잘못된 초대코드입니다. (학년 오류)');
-                        return;
-                    }
-
-                    if (classroom < 1 || classroom > maxClassroom) {
-                        alert('잘못된 초대코드입니다. (반 오류)');
+                    if (invitationCode.length !== 6) {
+                        alert('초대 코드는 6자리여야 합니다.');
                         return;
                     }
 
                     try {
-                        const response = await fetch('/api/add_class', {
+                        const response = await fetch('/api/add_class_by_code', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                             },
-                            body: JSON.stringify({ grade: grade, classroom: classroom }),
+                            body: JSON.stringify({ invite_code: invitationCode }),
                         });
                         const result = await response.json();
 
@@ -483,11 +464,13 @@
                             loadMyClasses(); // 클래스 목록 새로고침
                             newClassNameInput.value = ''; // 입력 필드 초기화
                             classPopupOverlay.style.display = 'none'; // 팝업 숨기기
+                            // 선택적으로 성공 메시지를 표시할 수 있습니다.
+                            // alert('클래스가 성공적으로 추가되었습니다!');
                         } else {
                             alert(`클래스 추가 실패: ${result.message}`);
                         }
                     } catch (error) {
-                        console.error('Error adding class:', error);
+                        console.error('Error adding class by code:', error);
                         alert('클래스 추가 중 오류가 발생했습니다.');
                     }
                 });

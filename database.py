@@ -27,6 +27,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userid TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
+        name TEXT NOT NULL,
         grade TEXT,
         classroom TEXT,
         student_no TEXT,
@@ -36,11 +37,12 @@ def init_db():
     cur.execute("""
     CREATE TABLE IF NOT EXISTS classes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
         grade TEXT NOT NULL,
         classroom TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        UNIQUE(session_id, grade, classroom)
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        UNIQUE(user_id, grade, classroom)
     )
     """)
     cur.execute("""
@@ -59,8 +61,8 @@ def init_db():
     cur.execute("SELECT id FROM users WHERE userid = ?", ("admin",))
     if not cur.fetchone():
         cur.execute(
-            "INSERT INTO users (userid, password, created_at) VALUES (?, ?, ?)",
-            ("admin", generate_password_hash("1234"), datetime.now().isoformat())
+            "INSERT INTO users (userid, name, password, created_at) VALUES (?, ?, ?, ?)",
+            ("admin", "관리자", generate_password_hash("1234"), datetime.now().isoformat())
         )
     db.commit()
     db.close()

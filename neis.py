@@ -39,13 +39,14 @@ def file_cache(lifetime):
             print(f"API 호출 또는 데이터 생성: {cache_key}")
             result = func(*args, **kwargs)
 
-            # 결과를 파일에 저장
-            try:
-                with open(cache_filename, 'w', encoding='utf-8') as f:
-                    cache_content = {'timestamp': time.time(), 'data': result}
-                    json.dump(cache_content, f, ensure_ascii=False, indent=2)
-            except IOError as e:
-                print(f"캐시 파일 쓰기 오류: {e}")
+            # 성공적인 결과만 파일에 저장 (빈 리스트는 실패로 간주하고 캐시하지 않음)
+            if result:
+                try:
+                    with open(cache_filename, 'w', encoding='utf-8') as f:
+                        cache_content = {'timestamp': time.time(), 'data': result}
+                        json.dump(cache_content, f, ensure_ascii=False, indent=2)
+                except IOError as e:
+                    print(f"캐시 파일 쓰기 오류: {e}")
 
             return result
         return wrapper

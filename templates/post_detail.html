@@ -4,26 +4,20 @@
     <meta charset="UTF-8">
     <title>세종고 통합 포털 - {{ post.title }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
 <div class="container">
 
     {% if session.get('user') %}
-    <!-- 프로필: 이름 + 학번(또는 관리자) + 동작 메뉴 -->
     <div class="profile-mini" role="note" aria-label="사용자 프로필">
       <div class="avatar">{{ (session.get('display_name') or session.get('user'))[0] | upper }}</div>
       <div class="profile-text">
         <div class="profile-name">{{ session.get('display_name') or session.get('user') }}</div>
         <div class="profile-sub">
-          {% if session.get('user') == 'admin' %}
-            관리자
-          {% else %}
-            학번: {{ session.get('student_no') or '등록안됨' }}
-          {% endif %}
+          {% if session.get('user') == 'admin' %}관리자{% else %}학번: {{ session.get('student_no') or '등록안됨' }}{% endif %}
         </div>
       </div>
-
-      <!-- 점 버튼 및 드롭다운 -->
       <div class="profile-actions" aria-hidden="true">
         <button class="dots-btn" aria-label="메뉴" type="button">⋯</button>
         <div class="profile-dropdown" aria-hidden="true">
@@ -32,11 +26,9 @@
       </div>
     </div>
     {% else %}
-    <!-- 로그인 버튼 -->
-    <a href="{{ url_for('login') }}" class="bottom-left-auth-btn">로그인</a>
+      <a href="{{ url_for('login') }}" class="bottom-left-auth-btn">로그인</a>
     {% endif %}
 
-    <!-- 좌측 패널 -->
     <aside class="sidebar">
       <a href="{{ url_for('main') }}" style="text-decoration: none;"><h2 style="color:#fff;margin:0 0 5px 0; font-size: 32px;">세종고 포털</h2></a>
       <p style="color:#ccc; margin:0 0 14px 0; font-size: 24px;">Sjh Portal</p>
@@ -46,39 +38,60 @@
         <button class="add-class-btn">+</button>
       </div>
       <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.2); margin: 10px 0;">
-      <ul id="my-classes-list" style="list-style: none; padding: 0; margin-top: 10px;">
-        <!-- 동적으로 추가될 클래스 항목들 -->
-      </ul>
-
+      <ul id="my-classes-list" style="list-style: none; padding: 0; margin-top: 10px;"></ul>
     </aside>
 
     <!-- 중앙 -->
     <main class="class-detail-section">
       <div class="class-header" style="display: flex; justify-content: space-between; align-items: center; padding-right: 20px; margin-bottom: 10px;">
-        <h1 style="padding-left: 40px;">{{ grade }}학년 {{ classroom }}반</h1>
+        <h1 style="padding-left: 40px;">
+          {% if post.is_pinned %}
+            <span title="고정됨" style="color:#e67e22;"><i class="fa-solid fa-thumbtack"></i></span>
+          {% endif %}
+          {{ grade }}학년 {{ classroom }}반
+        </h1>
       </div>
-      <hr class="class-title-divider" style="border: none; border-top: 2px solid black; margin: 10px 0 20px 20px; width: 80vw;">
+      <hr class="class-title-divider" style="border: none; border-top: 2px solid black; margin: 10px 0 20px 0; width: 80vw;">
 
       <div class="post-container">
         <a href="javascript:history.back()" class="btn-back">← 뒤로가기</a>
         <div class="post-view">
-            <h1 class="post-title">{{ post.title }}</h1>
+            <h1 class="post-title">
+              {{ post.title }}
+              {% if post.is_pinned %}
+                <span class="pin-badge" style="font-size:.7em; color:#e67e22; margin-left:8px;"><i class="fa-solid fa-thumbtack"></i> 고정됨</span>
+              {% endif %}
+            </h1>
             <div class="post-meta">
-                <span>작성자: {{ post.author_userid }}</span>
+                <span>작성자: {{ post.author_name }}</span>
                 <span>|</span>
                 <span>작성일: {{ post.created_at.split('T')[0] }}</span>
             </div>
             <hr class="post-divider">
             <div class="post-content">
-                {{ post.content | replace('\n', '<br>') | safe }}
+                {{ formatted_content | safe }}
             </div>
+
+            {% if session.get('user') == 'admin' %}
+            <div class="post-actions" style="text-align:right; margin-top:16px;">
+              <form method="POST" action="{{ url_for('toggle_pin_post', grade=grade, classroom=classroom, post_id=post.id) }}" style="display:inline;">
+                {% if post.is_pinned %}
+                  <input type="hidden" name="action" value="unpin">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
+                  <button type="submit" class="btn-list" style="background:#666;"><i class="fa-solid fa-ban"></i> 고정 해제</button>
+                {% else %}
+                  <input type="hidden" name="action" value="pin">
+                  <input type="hidden" name="next" value="{{ request.full_path }}">
+                  <button type="submit" class="btn-list"><i class="fa-solid fa-thumbtack"></i> 상단 고정</button>
+                {% endif %}
+              </form>
+            </div>
+            {% endif %}
         </div>
       </div>
     </main>
-
 </div>
 
-<!-- 팝업 구조 -->
 <div id="class-popup-overlay" style="display: none;">
   <div id="class-popup-content">
     <h3>새 클래스 추가</h3>

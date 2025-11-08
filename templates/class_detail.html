@@ -4,14 +4,23 @@
     <meta charset="UTF-8">
     <title>세종고 통합 포털 - {{ grade }}학년 {{ classroom }}반</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <!-- Font Awesome CDN 추가 -->
+    <!-- Font Awesome (핀 아이콘용) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
 <div class="container">
 
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-messages">
+          {% for category, message in messages %}
+            <div class="flash-message {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
     {% if session.get('user') %}
-    <!-- 프로필: 이름 + 학번(또는 관리자) + 동작 메뉴 -->
     <div class="profile-mini" role="note" aria-label="사용자 프로필">
       <div class="avatar">{{ (session.get('display_name') or session.get('user'))[0] | upper }}</div>
       <div class="profile-text">
@@ -24,8 +33,6 @@
           {% endif %}
         </div>
       </div>
-
-      <!-- 점 버튼 및 드롭다운 -->
       <div class="profile-actions" aria-hidden="true">
         <button class="dots-btn" aria-label="메뉴" type="button">⋯</button>
         <div class="profile-dropdown" aria-hidden="true">
@@ -34,8 +41,7 @@
       </div>
     </div>
     {% else %}
-    <!-- 로그인 버튼 -->
-    <a href="{{ url_for('login') }}" class="bottom-left-auth-btn">로그인</a>
+      <a href="{{ url_for('login') }}" class="bottom-left-auth-btn">로그인</a>
     {% endif %}
 
     <!-- 좌측 패널 -->
@@ -48,10 +54,7 @@
         <button class="add-class-btn">+</button>
       </div>
       <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.2); margin: 10px 0;">
-      <ul id="my-classes-list" style="list-style: none; padding: 0; margin-top: 10px;">
-        <!-- 동적으로 추가될 클래스 항목들 -->
-      </ul>
-
+      <ul id="my-classes-list" style="list-style: none; padding: 0; margin-top: 10px;"></ul>
     </aside>
 
     <!-- 중앙 -->
@@ -66,9 +69,42 @@
         {% if posts %}
           <ul style="list-style: none; padding: 0;">
             {% for post in posts %}
-              <li style="border-bottom: 1px solid #eee; padding: 10px 0; background-color: white; border-radius: 8px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <a href="/class/{{ grade }}-{{ classroom }}/post/{{ post.id }}" style="text-decoration: none; color: #333; font-weight: bold;">{{ post.title }}</a>
-                <span style="font-size: 0.8em; color: #666; margin-left: 10px;">작성자: {{ post.author_userid }} | {{ post.created_at.split('T')[0] }}</span>
+              <li style="border-bottom: 1px solid #eee; background-color: white; border-radius: 8px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display:flex; align-items:center; gap:12px;">
+                <!-- 핀 상태 뱃지 -->
+                {% if post.is_pinned %}
+                  <span title="고정됨" style="color:#e67e22;"><i class="fa-solid fa-thumbtack"></i></span>
+                {% else %}
+                  <span style="opacity:.2;"><i class="fa-regular fa-thumbtack"></i></span>
+                {% endif %}
+
+                <!-- 제목/메타 -->
+                <div style="flex:1 1 auto;">
+                  <a href="/class/{{ grade }}-{{ classroom }}/post/{{ post.id }}" style="text-decoration: none; color: #333; font-weight: bold;">
+                    {{ post.title }}
+                  </a>
+                  <span style="font-size: 0.8em; color: #666; margin-left: 10px;">
+                    작성자: {{ post.author_name }} | {{ post.created_at.split('T')[0] }}
+                  </span>
+                </div>
+
+                <!-- 관리자용 핀 토글 버튼 -->
+                {% if session.get('user') == 'admin' %}
+                <form method="POST" action="{{ url_for('toggle_pin_post', grade=grade, classroom=classroom, post_id=post.id) }}" style="margin:0;">
+                  {% if post.is_pinned %}
+                    <input type="hidden" name="action" value="unpin">
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
+                    <button type="submit" title="고정 해제" style="border:none; background:#f0f0f0; padding:8px 10px; border-radius:8px; cursor:pointer;">
+                      <i class="fa-solid fa-ban"></i> 해제
+                    </button>
+                  {% else %}
+                    <input type="hidden" name="action" value="pin">
+                    <input type="hidden" name="next" value="{{ request.full_path }}">
+                    <button type="submit" title="상단 고정" style="border:none; background:#e67e22; color:#fff; padding:8px 10px; border-radius:8px; cursor:pointer;">
+                      <i class="fa-solid fa-thumbtack"></i> 고정
+                    </button>
+                  {% endif %}
+                </form>
+                {% endif %}
               </li>
             {% endfor %}
           </ul>
@@ -76,13 +112,10 @@
           <p class="no-posts-message">아직 작성된 게시글이 없습니다.</p>
         {% endif %}
       </div>
-
-      <!-- 시간표 및 급식 정보는 여기에 표시되지 않습니다. -->
     </main>
-
 </div>
 
-<!-- 팝업 구조 -->
+<!-- 팝업 구조 (내 클래스 추가) -->
 <div id="class-popup-overlay" style="display: none;">
   <div id="class-popup-content">
     <h3>새 클래스 추가</h3>

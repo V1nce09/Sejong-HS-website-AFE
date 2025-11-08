@@ -1,0 +1,36 @@
+/* 모바일 친화 기본값 */
+html, body { -webkit-tap-highlight-color: transparent; }
+button, a { touch-action: manipulation; }
+
+/* 터치 타겟 확대 */
+button, .btn, .dropdown-item, .my-class-item { min-height: 44px; }
+
+/* 설치 배너 */
+.install-banner {
+  position: sticky; top: 0; z-index: 2000;
+  background: #0b57d6; color: #fff;
+  display: none; justify-content: center; gap: 8px;
+  padding: 8px 12px; font-weight: 800;
+}
+.install-banner button {
+  background: #fff; color: #0b57d6; border: none;
+  padding: 8px 12px; border-radius: 10px; font-weight: 800;
+}
+
+/* 반응형 레이아웃: 작은 화면에서 세로 배치 */
+@media (max-width: 880px) {
+  .container { flex-direction: column; }
+  .sidebar { width: 100%; order: 0; padding: 12px 16px 16px; }
+  .timetable-section, .class-detail-section { order: 1; padding: 12px; }
+  .meal-panel { order: 2; width: 100%; border-left: none; border-top: 1px solid #ddd; }
+  .profile-mini, .bottom-left-auth-btn { position: static; margin: 8px 0 0; width: 100%; }
+  .interactive-title { font-size: 1.2rem; flex-wrap: wrap; gap: 6px; }
+}
+
+/* 아주 작은 화면에서 폰트/여백 최적화 */
+@media (max-width: 420px) {
+  .day-box { padding: 10px 14px; }
+  .btn, button { font-size: .95rem; }
+  .post-view { padding: 24px; }
+  .post-title { font-size: 1.4rem; }
+}

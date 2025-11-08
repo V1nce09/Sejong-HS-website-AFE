@@ -76,7 +76,9 @@ body {
     width: 220px;
     background: #2c3e50;
     color: white;
-    padding: 20px;
+    padding: 20px 20px 120px; /* Add extra bottom padding to avoid overlap with profile UI */
+    display: flex; /* Add flex display */
+    flex-direction: column; /* Arrange items vertically */
 }
 .sidebar label, .sidebar input {
     display: block;
@@ -768,6 +770,13 @@ body {
     color: orange;
 }
 
+#my-classes-list {
+    flex: 1; /* Grow to fill available space */
+    overflow-y: auto; /* Enable vertical scrolling when content overflows */
+    min-height: 0; /* Prevent flexbox overflow issues in some browsers */
+    padding-right: 5px; /* Add a little space for the scrollbar */
+}
+
 /* Post Detail View */
 .post-container {
     padding: 0 20px;
@@ -795,7 +804,7 @@ body {
     margin: 0; /* Margin is now handled by post-container */
     border-radius: 8px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    min-height: 65vh; /* Set a minimum height */
+    min-height: 60vh; /* Set a minimum height */
 }
 
 .post-title {
@@ -843,4 +852,29 @@ body {
 
 .btn-list:hover {
     background-color: #2980b9;
+}
+
+/* Flashed Messages */
+.flash-messages {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    width: 80%;
+    max-width: 600px;
+}
+
+.flash-message {
+    background-color: #d9534f; /* Bootstrap's danger color */
+    color: white;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+
+.flash-message.info {
+    background-color: #5bc0de; /* Bootstrap's info color */
 }
