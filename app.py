@@ -92,7 +92,6 @@ def register():
             # 파싱: 첫자리=학년, 2-3자리=반, 4-5자리=번호
             grade = student_no[0]
             classroom = str(int(student_no[1:3]))  # "01" -> "1"
-            # short_no = student_no[3:] # 현재 사용되지 않으므로 제거
         else:
             grade = None
             classroom = None

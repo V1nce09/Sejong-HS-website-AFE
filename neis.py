@@ -28,15 +28,11 @@ def file_cache(lifetime):
                         cache_data = json.load(f)
                         # 캐시 유효 시간 확인
                         if time.time() - cache_data['timestamp'] < lifetime:
-                            print(f"캐시 히트: {cache_key}")
                             return cache_data['data']
-                        else:
-                            print(f"캐시 만료: {cache_key}")
                 except (IOError, json.JSONDecodeError) as e:
                     print(f"캐시 파일 읽기 오류: {e}")
 
             # 캐시가 없거나 만료된 경우, 실제 함수 호출
-            print(f"API 호출 또는 데이터 생성: {cache_key}")
             result = func(*args, **kwargs)
 
             # 성공적인 결과만 파일에 저장 (빈 리스트는 실패로 간주하고 캐시하지 않음)
@@ -65,7 +61,7 @@ def get_meal(date):
         f"&SD_SCHUL_CODE={config.SD_SCHUL_CODE}&MLSV_YMD={date}"
     )
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=5)
         response.raise_for_status()  # 200 OK가 아니면 예외 발생
         data = response.json()
 
@@ -106,7 +102,7 @@ def get_timetable_range(grade, classroom, start_date, end_date):
     )
 
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=5)
         response.raise_for_status()
         data = response.json()
 

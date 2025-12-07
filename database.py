@@ -57,6 +57,8 @@ def init_db():
         FOREIGN KEY (author_id) REFERENCES users (id)
     )
     """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_grade_classroom ON posts (grade, classroom)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts (author_id)")
     # 기본 관리자 계정 (admin/1234)이 없으면 생성
     cur.execute("SELECT id FROM users WHERE userid = ?", ("admin",))
     if not cur.fetchone():

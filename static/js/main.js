@@ -1,9 +1,5 @@
 (function() {
     /* --- DOM 요소 --- */
-    const queryForm = document.getElementById('queryForm');
-    const dateInput = document.getElementById('date');
-    const gradeInput = document.getElementById('grade'); // 사이드바 학년
-    const classroomInput = document.getElementById('classroom'); // 사이드바 반
     const timetableContainer = document.getElementById('timetable-data-container');
     const timetableLoading = document.getElementById('timetable-loading');
 
@@ -147,7 +143,6 @@
 
     /* --- 데이터 로드 및 렌더링 총괄 --- */
     async function loadAndRenderData(date, grade, classroom) {
-        console.log('DEBUG: mealLoading element:', mealLoading, 'timetableLoading element:', timetableLoading);
         // 학년에 따라 반의 최댓값 동적 변경
         const newMaxClass = (parseInt(grade, 10) === 2) ? 10 : 9;
         titleClassInput.setAttribute('max', newMaxClass);
@@ -168,14 +163,11 @@
         let shouldFetchTimetable = (date !== lastFetchedDate || grade !== lastFetchedGrade || classroom !== lastFetchedClassroom);
 
         // 로딩 인디케이터 표시 (필요한 경우에만)
-        console.log('DEBUG: shouldFetchMeal:', shouldFetchMeal, 'shouldFetchTimetable:', shouldFetchTimetable);
         if (mealLoading && shouldFetchMeal) {
             mealLoading.style.display = 'inline';
-            console.log('DEBUG: mealLoading visible');
         }
         if (timetableLoading && shouldFetchTimetable) {
             timetableLoading.style.visibility = 'visible'; // FIX: Use visibility
-            console.log('DEBUG: timetableLoading visible');
         }
 
         // A promise that resolves after a minimum delay
@@ -201,7 +193,6 @@
             renderMeal(mealData);
             if (mealLoading) {
                 mealLoading.style.display = 'none';
-                console.log('DEBUG: mealLoading hidden');
             }
             lastFetchedDate = date; // 성공적으로 가져왔으면 업데이트
         }
@@ -219,7 +210,6 @@
             renderTimetable(timetableData);
             if (timetableLoading) {
                 timetableLoading.style.visibility = 'hidden'; // FIX: Use visibility
-                console.log('DEBUG: timetableLoading hidden');
             }
             lastFetchedDate = date; // 성공적으로 가져왔으면 업데이트
             lastFetchedGrade = grade;
@@ -229,11 +219,9 @@
         // 만약 아무것도 가져오지 않았다면 로딩 인디케이터를 숨김 (초기 로드 시 등)
         if (mealLoading && !shouldFetchMeal) {
             mealLoading.style.display = 'none';
-            console.log('DEBUG: mealLoading hidden (no fetch)');
         }
         if (timetableLoading && !shouldFetchTimetable) {
             timetableLoading.style.visibility = 'hidden'; // FIX: Use visibility
-            console.log('DEBUG: timetableLoading hidden (no fetch)');
         }
     }
 
@@ -389,23 +377,34 @@
         let initialGrade = body.dataset.initialGrade;
         let initialClassroom = body.dataset.initialClassroom;
         
-        // 내 클래스 목록 로드 (비동기 완료 대기)
-        await loadMyClasses();
-
-        // 내 클래스 목록에서 첫 번째 항목을 가져와 초기 학년/반으로 설정
-        const firstClassItem = myClassesList.querySelector('li[data-grade][data-classroom]');
-        if (firstClassItem) {
-            initialGrade = firstClassItem.dataset.grade;
-            initialClassroom = firstClassItem.dataset.classroom;
-        }
-
         // 제목 input에 이벤트 리스너 설정
         setupTitleInputs();
 
         // main.html 페이지에서만 loadAndRenderData를 호출하도록 조건 추가
         if (document.body.classList.contains('main-page')) {
+            // 초기 데이터 로드를 먼저 시작 (기본값 또는 URL 파라미터 기준)
             if (initialDate && initialGrade && initialClassroom) {
                 loadAndRenderData(initialDate, initialGrade, initialClassroom);
+            }
+        }
+
+        // 내 클래스 목록 로드 (비동기적으로 진행)
+        await loadMyClasses();
+
+        // 내 클래스 목록에서 첫 번째 항목을 가져와 초기 학년/반으로 설정
+        // 만약 loadMyClasses가 나중에 완료되고, 첫 번째 클래스가 있다면
+        // 현재 표시된 데이터(기본값)를 덮어쓰도록 트리거
+        const firstClassItem = myClassesList.querySelector('li[data-grade][data-classroom]');
+        if (firstClassItem) {
+            const newInitialGrade = firstClassItem.dataset.grade;
+            const newInitialClassroom = firstClassItem.dataset.classroom;
+            
+            // 현재 input 값과 다를 경우에만 업데이트 및 데이터 로드 트리거
+            if (titleGradeInput.value !== newInitialGrade || titleClassInput.value !== newInitialClassroom) {
+                titleGradeInput.value = newInitialGrade;
+                titleClassInput.value = newInitialClassroom;
+                // 디바운스된 핸들러를 직접 호출하여 데이터 로드
+                handleTitleInputChange(); 
             }
         }
 
