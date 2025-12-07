@@ -179,7 +179,7 @@
         }
 
         // A promise that resolves after a minimum delay
-        const minDelay = (duration) => new Promise(resolve => setTimeout(resolve, duration));
+        // const minDelay = (duration) => new Promise(resolve => setTimeout(resolve, duration));
 
         // 급식 데이터 불러오기 및 렌더링
         if (shouldFetchMeal && mealContent) {
@@ -191,10 +191,11 @@
             }
 
             // Fetch data and wait for minimum delay simultaneously
-            const [mealData] = await Promise.all([
-                fetchMeal(date),
-                minDelay(300) // FIX: Ensure loader is visible for at least 300ms
-            ]);
+            const mealData = await fetchMeal(date);
+            // const [mealData] = await Promise.all([
+            //     fetchMeal(date),
+            //     minDelay(300) // FIX: Ensure loader is visible for at least 300ms
+            // ]);
 
             mealContent.innerHTML = ''; // 새로운 데이터가 올 때만 지움
             renderMeal(mealData);
@@ -208,10 +209,11 @@
         // 시간표 데이터 불러오기 및 렌더링
         if (shouldFetchTimetable && timetableContainer) {
             // Fetch data and wait for minimum delay simultaneously
-            const [timetableData] = await Promise.all([
-                fetchTimetable(date, grade, classroom),
-                minDelay(300) // FIX: Ensure loader is visible for at least 300ms
-            ]);
+            const timetableData = await fetchTimetable(date, grade, classroom);
+            // const [timetableData] = await Promise.all([
+            //     fetchTimetable(date, grade, classroom),
+            //     minDelay(300) // FIX: Ensure loader is visible for at least 300ms
+            // ]);
 
             timetableContainer.innerHTML = ''; // 새로운 데이터가 올 때만 지움
             renderTimetable(timetableData);
