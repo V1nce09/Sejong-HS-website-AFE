@@ -60,7 +60,7 @@
       </div>
       <hr class="class-title-divider" style="border: none; border-top: 2px solid black; margin: 10px 0 20px 0; width: 80vw;">
 
-      <form method="POST" style="padding-left: 40px; padding-right: 20px;">
+      <form id="write-form" method="POST" style="padding-left: 40px; padding-right: 20px;">
         <div style="margin-bottom: 15px;">
           <label for="title" style="display: block; margin-bottom: 5px; font-weight: bold;">제목</label>
           <input type="text" id="title" name="title" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" required>
@@ -70,7 +70,7 @@
           <textarea id="content" name="content" rows="10" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" required></textarea>
         </div>
         <div style="text-align: right;">
-          <button type="submit" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em;">작성 완료</button>
+          <button id="submit-post-btn" type="submit" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em;">작성 완료</button>
           <button type="button" onclick="history.back()" style="background-color: #f44336; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; margin-left: 10px;">취소</button>
         </div>
       </form>
@@ -79,5 +79,12 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/main.js') }}?v={{ cache_buster }}" defer></script>
+<script>
+    document.getElementById('write-form').addEventListener('submit', function() {
+        const submitButton = document.getElementById('submit-post-btn');
+        submitButton.disabled = true;
+        submitButton.textContent = '작성 중...';
+    });
+</script>
 </body>
 </html>

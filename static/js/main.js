@@ -451,6 +451,10 @@
                         return;
                     }
 
+                    const originalButtonText = addClassSubmitBtn.textContent;
+                    addClassSubmitBtn.disabled = true;
+                    addClassSubmitBtn.textContent = '추가 중...';
+
                     try {
                         const response = await fetch('/api/add_class_by_code', {
                             method: 'POST',
@@ -465,14 +469,15 @@
                             loadMyClasses(); // 클래스 목록 새로고침
                             newClassNameInput.value = ''; // 입력 필드 초기화
                             classPopupOverlay.style.display = 'none'; // 팝업 숨기기
-                            // 선택적으로 성공 메시지를 표시할 수 있습니다.
-                            // alert('클래스가 성공적으로 추가되었습니다!');
                         } else {
                             alert(`클래스 추가 실패: ${result.message}`);
                         }
                     } catch (error) {
                         console.error('Error adding class by code:', error);
                         alert('클래스 추가 중 오류가 발생했습니다.');
+                    } finally {
+                        addClassSubmitBtn.disabled = false;
+                        addClassSubmitBtn.textContent = originalButtonText;
                     }
                 });
             }
