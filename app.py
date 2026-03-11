@@ -199,90 +199,151 @@ def logout():
     return redirect(url_for("main")) # 로그아웃 후 메인 페이지로 이동
 
 # 📌 클래스 상세 페이지
-@app.route("/class/<grade>-<classroom>")
+@app.route("/class/<grade>/<classroom>")
 def class_detail(grade, classroom):
-    try:
-        grade_num = int(grade)
-        class_num = int(classroom)
-        if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
-            flash("존재하지 않는 학급입니다.")
-            return redirect(url_for("main"))
-    except ValueError:
-        flash("유효하지 않은 학급 경로입니다.")
-        return redirect(url_for("main"))
-
-    # 초대 코드 검사
-    unlocked_classes = session.get('unlocked_classes', [])
+    # 공통 변수
+    db = database.get_db()
+    posts = []
+    is_authorized = False
     class_identifier = f"{grade}-{classroom}"
+    is_admin = g.user and g.user['userid'] == 'admin'
 
-    # 관리자가 아니고, 아직 잠금 해제되지 않은 클래스인 경우
-    if g.user and g.user['userid'] != 'admin' and class_identifier not in unlocked_classes:
-        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
-    # 비로그인 사용자는 무조건 잠금 해제 페이지로
-    elif not g.user and class_identifier not in unlocked_classes:
-        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+    # 1. 관리자 전용 클래스
+    if grade == 'admin' and classroom == 'general':
+        if is_admin:
+            is_authorized = True
+            posts = db.execute(
+                "SELECT p.id, p.title, p.created_at, u.name as author_name "
+                "FROM posts p JOIN users u ON p.author_id = u.id "
+                "WHERE p.grade = 0 AND p.classroom = 0 "
+                "ORDER BY p.created_at DESC"
+            ).fetchall()
+        else:
+            flash("관리자만 접근할 수 있습니다.")
+            return redirect(url_for("main"))
 
-    # 관리자에게는 현재 클래스의 초대 코드를 항상 보여줌
-    if g.user and g.user['userid'] == 'admin':
+    # 2. 학년 통합 클래스
+    elif classroom == 'combined':
+        try:
+            grade_num = int(grade)
+            if not (1 <= grade_num <= 3):
+                flash("존재하지 않는 학년입니다.")
+                return redirect(url_for("main"))
+        except ValueError:
+            flash("유효하지 않은 학년 정보입니다.")
+            return redirect(url_for("main"))
+
+        # 관리자이거나 해당 학년 학생이면 접근 가능
+        if is_admin or (g.user and g.user['grade'] == grade):
+            is_authorized = True
+            posts = db.execute(
+                "SELECT p.id, p.title, p.created_at, u.name as author_name "
+                "FROM posts p JOIN users u ON p.author_id = u.id "
+                "WHERE p.grade = ? AND p.classroom = 0 "
+                "ORDER BY p.created_at DESC",
+                (grade,)
+            ).fetchall()
+        else:
+            flash(f"{grade}학년 학생만 접근할 수 있습니다.")
+            return redirect(url_for("main"))
+
+    # 3. 일반 학급
+    else:
+        try:
+            grade_num, class_num = int(grade), int(classroom)
+            if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
+                flash("존재하지 않는 학급입니다.")
+                return redirect(url_for("main"))
+        except ValueError:
+            flash("유효하지 않은 학급 정보입니다.")
+            return redirect(url_for("main"))
+
+        unlocked_classes = session.get('unlocked_classes', [])
+        if is_admin or class_identifier in unlocked_classes:
+            is_authorized = True
+            posts = db.execute(
+                "SELECT p.id, p.title, p.created_at, u.name as author_name "
+                "FROM posts p JOIN users u ON p.author_id = u.id "
+                "WHERE p.grade = ? AND p.classroom = ? "
+                "ORDER BY p.created_at DESC",
+                (grade, classroom)
+            ).fetchall()
+        else:
+            # 잠금 해제되지 않았으면 잠금 해제 페이지로
+            return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+
+    # 관리자에게는 현재 클래스의 초대 코드를 항상 보여줌 (일반 학급만)
+    if is_admin and classroom != 'combined' and grade != 'admin':
         correct_code = generate_invite_code(grade, classroom)
         flash(f'{grade}학년 {classroom}반의 초대 코드는 \'{correct_code}\'입니다. 학생들에게 이 코드를 알려주세요.', 'info')
-
-    db = database.get_db()
-
-    db = database.get_db()
-    posts = db.execute(
-        "SELECT p.id, p.title, p.created_at, u.name as author_name "
-        "FROM posts p JOIN users u ON p.author_id = u.id "
-        "WHERE p.grade = ? AND p.classroom = ? "
-        "ORDER BY p.created_at DESC",
-        (grade, classroom)
-    ).fetchall()
 
     return render_template(
         "class_detail.html",
         grade=grade,
         classroom=classroom,
-        posts=posts, # 게시글 목록 전달
-        cache_buster=int(time.time()) # cache_buster 추가
+        posts=posts,
+        cache_buster=int(time.time())
     )
 
 # 📌 글쓰기 페이지
-@app.route("/class/<grade>-<classroom>/write", methods=["GET", "POST"])
+@app.route("/class/<grade>/<classroom>/write", methods=["GET", "POST"])
 def write_post(grade, classroom):
-    try:
-        grade_num = int(grade)
-        class_num = int(classroom)
-        if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
-            flash("존재하지 않는 학급입니다.")
-            return redirect(url_for("main"))
-    except ValueError:
-        flash("유효하지 않은 학급 경로입니다.")
-        return redirect(url_for("main"))
-
-    # 초대 코드 검사 (class_detail과 동일)
-    unlocked_classes = session.get('unlocked_classes', [])
-    class_identifier = f"{grade}-{classroom}"
+    is_authorized = False
     is_admin = g.user and g.user['userid'] == 'admin'
 
-    if not is_admin and class_identifier not in unlocked_classes:
-        # 글쓰기는 로그인 사용자만 가능하므로, 비로그인 경우는 class_detail에서 이미 처리됨
-        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
-
     if g.user is None: # 로그인하지 않은 사용자는 글쓰기 불가
+        flash("글을 작성하려면 로그인이 필요합니다.")
         return redirect(url_for("login"))
+
+    # 1. 관리자 전용 클래스
+    if grade == 'admin' and classroom == 'general':
+        if is_admin:
+            is_authorized = True
+        else:
+            flash("관리자만 글을 작성할 수 있습니다.")
+            return redirect(url_for("main"))
+    # 2. 학년 통합 클래스
+    elif classroom == 'combined':
+        if is_admin or (g.user and g.user['grade'] == grade):
+            is_authorized = True
+        else:
+            flash(f"{grade}학년 학생만 글을 작성할 수 있습니다.")
+            return redirect(url_for("main"))
+    # 3. 일반 학급
+    else:
+        unlocked_classes = session.get('unlocked_classes', [])
+        class_identifier = f"{grade}-{classroom}"
+        if is_admin or class_identifier in unlocked_classes:
+            is_authorized = True
+        else:
+            # 잠금 해제되지 않은 경우, class_detail로 보내면 거기서 unlock_class로 리다이렉트됨
+            flash("글을 작성할 권한이 없는 학급입니다.")
+            return redirect(url_for("class_detail", grade=grade, classroom=classroom))
+
+    if not is_authorized:
+        # 이중 안전장치
+        flash("글을 작성할 권한이 없습니다.")
+        return redirect(url_for("main"))
 
     if request.method == "POST":
         title = request.form.get("title")
         content = request.form.get("content")
 
         if not title or not content:
-            # TODO: 에러 메시지를 템플릿으로 전달하여 표시
-            return render_template("write.html", grade=grade, classroom=classroom, error="제목과 내용을 모두 입력해주세요.")
+            flash("제목과 내용을 모두 입력해주세요.", "error")
+            return render_template("write.html", grade=grade, classroom=classroom)
 
+        # DB에 저장할 grade, classroom 결정
+        post_grade, post_classroom = grade, classroom
+        if grade == 'admin':
+            post_grade, post_classroom = 0, 0
+        elif classroom == 'combined':
+            post_classroom = 0
+        
         db = database.get_db()
         db.execute(
             "INSERT INTO posts (grade, classroom, title, content, author_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (grade, classroom, title, content, g.user["id"], datetime.now().isoformat())
+            (post_grade, post_classroom, title, content, g.user["id"], datetime.now().isoformat())
         )
         db.commit()
         return redirect(url_for("class_detail", grade=grade, classroom=classroom))
@@ -291,29 +352,42 @@ def write_post(grade, classroom):
         "write.html",
         grade=grade,
         classroom=classroom,
-        cache_buster=int(time.time()) # cache_buster 추가
+        cache_buster=int(time.time())
     )
 
 # 📌 게시물 상세 페이지
-@app.route("/class/<grade>-<classroom>/post/<int:post_id>")
+@app.route("/class/<grade>/<classroom>/post/<int:post_id>")
 def post_detail(grade, classroom, post_id):
-    try:
-        grade_num = int(grade)
-        class_num = int(classroom)
-        if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
-            flash("존재하지 않는 학급입니다.")
-            return redirect(url_for("main"))
-    except ValueError:
-        flash("유효하지 않은 학급 경로입니다.")
-        return redirect(url_for("main"))
-
-    # 초대 코드 검사 (class_detail과 동일)
-    unlocked_classes = session.get('unlocked_classes', [])
-    class_identifier = f"{grade}-{classroom}"
+    is_authorized = False
     is_admin = g.user and g.user['userid'] == 'admin'
 
-    if not is_admin and class_identifier not in unlocked_classes:
-        return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+    # 1. 관리자 전용 클래스
+    if grade == 'admin' and classroom == 'general':
+        if is_admin:
+            is_authorized = True
+        else:
+            flash("관리자만 접근할 수 있습니다.")
+            return redirect(url_for("main"))
+    # 2. 학년 통합 클래스
+    elif classroom == 'combined':
+        # 관리자이거나 해당 학년 학생이면 접근 가능
+        if is_admin or (g.user and g.user['grade'] == grade):
+            is_authorized = True
+        else:
+            flash(f"{grade}학년 학생만 접근할 수 있습니다.")
+            return redirect(url_for("main"))
+    # 3. 일반 학급
+    else:
+        unlocked_classes = session.get('unlocked_classes', [])
+        class_identifier = f"{grade}-{classroom}"
+        if is_admin or class_identifier in unlocked_classes:
+            is_authorized = True
+        else:
+            return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
+    
+    if not is_authorized:
+        flash("게시물을 볼 권한이 없습니다.")
+        return redirect(url_for("main"))
 
     db = database.get_db()
     post = db.execute(
@@ -335,7 +409,7 @@ def post_detail(grade, classroom, post_id):
         grade=grade,
         classroom=classroom,
         post=post,
-        formatted_content=formatted_content, # 소독된 내용을 전달
+        formatted_content=formatted_content,
         cache_buster=int(time.time())
     )
 
@@ -485,23 +559,41 @@ def get_my_classes():
     if g.user is None:
         return jsonify({"success": True, "classes": []}) # 로그인 안 했으면 빈 목록 반환
 
-    # 관리자에게는 모든 클래스 목록을 반환
+    my_classes = []
+
+    # 관리자에게는 모든 클래스 목록과 관리자 전용 클래스를 반환
     if g.user['userid'] == 'admin':
-        all_classes = []
+        # 관리자 전용 클래스 추가
+        my_classes.append({"grade": "admin", "classroom": "general", "display_name": "관리자 전용"})
+        # 각 학년 통합 클래스 추가
+        for grade_num in range(1, 4):
+            my_classes.append({"grade": str(grade_num), "classroom": "combined", "display_name": f"{grade_num}학년 통합"})
+        # 모든 일반 학급 추가
         for grade_num in range(1, 4):
             for class_num in range(1, 11):
-                all_classes.append({"grade": str(grade_num), "classroom": str(class_num)})
-        return jsonify({"success": True, "classes": all_classes})
+                 # 2학년은 10반까지, 나머지는 9반까지 있다고 가정
+                if grade_num == 2 and class_num > 10: continue
+                if grade_num != 2 and class_num > 9: continue
+                my_classes.append({"grade": str(grade_num), "classroom": str(class_num), "display_name": f"{grade_num}학년 {class_num}반"})
+        
+        return jsonify({"success": True, "classes": my_classes})
 
-    # 일반 사용자는 DB에서 조회
+    # 일반 사용자는 DB에서 '내 클래스' 조회
     db = database.get_db()
-    classes = db.execute(
+    classes_from_db = db.execute(
         "SELECT grade, classroom FROM classes WHERE user_id = ?",
         (g.user["id"],)
     ).fetchall()
 
     # Row 객체를 딕셔너리 리스트로 변환
-    my_classes = [{"grade": c["grade"], "classroom": c["classroom"]} for c in classes]
+    my_classes.extend([{"grade": c["grade"], "classroom": c["classroom"], "display_name": f'{c["grade"]}학년 {c["classroom"]}반'} for c in classes_from_db])
+
+    # 사용자의 학년 통합 클래스 추가
+    if g.user and g.user['grade']:
+        user_grade = g.user['grade']
+        # 중복 추가 방지
+        if not any(c['grade'] == user_grade and c['classroom'] == 'combined' for c in my_classes):
+            my_classes.insert(0, {"grade": user_grade, "classroom": "combined", "display_name": f"{user_grade}학년 통합"})
 
     return jsonify({"success": True, "classes": my_classes})
 

@@ -25,15 +25,15 @@
                     const listItem = document.createElement('li');
                     listItem.dataset.grade = cls.grade;
                     listItem.dataset.classroom = cls.classroom;
-                    listItem.classList.add('my-class-item'); // 새로운 클래스 추가
+                    listItem.classList.add('my-class-item');
 
                     listItem.innerHTML = `
-                        <span class="class-info">${cls.grade}학년 ${cls.classroom}반</span>
+                        <span class="class-info">${cls.display_name}</span>
                     `;
 
                     // 클래스 정보 클릭 시 페이지 이동
                     listItem.querySelector('.class-info').addEventListener('click', () => {
-                        window.location.href = `/class/${cls.grade}-${cls.classroom}`;
+                        window.location.href = `/class/${cls.grade}/${cls.classroom}`;
                     });
 
                     myClassesList.appendChild(listItem);
