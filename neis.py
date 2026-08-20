@@ -1,57 +1,137 @@
 import requests
-from bs4 import BeautifulSoup
 import time
 import os
 import json
+import hashlib
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import config
 
-# --- 파일 기반 캐시 데코레이터 ---
-def file_cache(lifetime):
-    """지정된 시간(초) 동안 결과를 파일에 캐시하는 데코레이터입니다."""
+
+class NeisRequestError(Exception):
+    """NEIS 요청/응답 자체가 실패했음을 나타냅니다.
+
+    정상적인 '데이터 없음(INFO-200)'과 네트워크/서버 오류를 구분하여,
+    오류일 때는 만료된 캐시라도 재사용할 수 있게 합니다.
+    """
+
+
+_last_cache_cleanup = 0
+
+
+def _cleanup_cache_if_needed():
+    """캐시 디렉토리가 무한히 커지지 않도록 하루에 한 번 오래된 파일을 정리합니다."""
+    global _last_cache_cleanup
+    now = time.time()
+    if now - _last_cache_cleanup < 24 * 60 * 60:
+        return
+    _last_cache_cleanup = now
+
+    max_age = getattr(config, "CACHE_FILE_MAX_AGE", 45 * 24 * 60 * 60)
+    try:
+        for name in os.listdir(config.CACHE_DIR):
+            if not name.endswith(".json"):
+                continue
+            path = os.path.join(config.CACHE_DIR, name)
+            try:
+                if now - os.path.getmtime(path) > max_age:
+                    os.remove(path)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
+def _cache_path(func_name, args, kwargs):
+    raw_key = json.dumps(
+        {"func": func_name, "args": args, "kwargs": sorted(kwargs.items())},
+        ensure_ascii=False,
+        default=str,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+    return os.path.join(config.CACHE_DIR, f"{func_name}_{digest}.json")
+
+
+def file_cache(lifetime, cache_empty=True):
+    """파일 기반 공유 캐시.
+
+    - 여러 사용자가 같은 급식/시간표를 조회해도 NEIS에는 캐시 만료 전 한 번만 요청합니다.
+    - []도 정상 결과로 캐시하여 주말/방학에 같은 '데이터 없음' 요청이 반복되지 않게 합니다.
+    - NEIS 장애/타임아웃 시에는 일정 기간 내의 만료 캐시(stale)를 대신 반환합니다.
+    - lifetime은 초(int) 또는 인자를 받아 초를 반환하는 함수일 수 있습니다.
+    """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # 캐시 키 생성 (함수명 + 인자)
-            # args와 kwargs를 정렬하여 순서에 상관없이 동일한 키를 갖도록 함
-            sorted_kwargs = sorted(kwargs.items())
-            key_parts = [func.__name__] + list(map(str, args)) + [f"{k}={v}" for k, v in sorted_kwargs]
-            cache_key = "_".join(key_parts)
-            cache_filename = os.path.join(config.CACHE_DIR, f"{cache_key}.json")
+            os.makedirs(config.CACHE_DIR, exist_ok=True)
+            _cleanup_cache_if_needed()
+            cache_filename = _cache_path(func.__name__, args, kwargs)
+            ttl = lifetime(*args, **kwargs) if callable(lifetime) else lifetime
+            cached = None
+            cache_age = None
 
-            # 캐시 파일 확인
             if os.path.exists(cache_filename):
                 try:
-                    with open(cache_filename, 'r', encoding='utf-8') as f:
-                        cache_data = json.load(f)
-                        # 캐시 유효 시간 확인
-                        if time.time() - cache_data['timestamp'] < lifetime:
-                            return cache_data['data']
-                except (IOError, json.JSONDecodeError) as e:
+                    with open(cache_filename, "r", encoding="utf-8") as f:
+                        cached = json.load(f)
+                    cache_age = time.time() - float(cached.get("timestamp", 0))
+                    if cache_age < ttl:
+                        return cached.get("data", [])
+                except (OSError, ValueError, TypeError, json.JSONDecodeError) as e:
                     print(f"캐시 파일 읽기 오류: {e}")
+                    cached = None
+                    cache_age = None
 
-            # 캐시가 없거나 만료된 경우, 실제 함수 호출
-            result = func(*args, **kwargs)
+            try:
+                result = func(*args, **kwargs)
+            except NeisRequestError as e:
+                print(f"NEIS 요청 실패, 캐시 대체 시도: {e}")
+                max_stale = getattr(config, "CACHE_STALE_MAX_AGE", 7 * 24 * 60 * 60)
+                if cached is not None and cache_age is not None and cache_age < max_stale:
+                    return cached.get("data", [])
+                return []
 
-            # 성공적인 결과만 파일에 저장 (빈 리스트는 실패로 간주하고 캐시하지 않음)
-            if result:
+            should_cache = cache_empty or bool(result)
+            if should_cache:
+                temp_filename = f"{cache_filename}.tmp"
                 try:
-                    with open(cache_filename, 'w', encoding='utf-8') as f:
-                        cache_content = {'timestamp': time.time(), 'data': result}
-                        json.dump(cache_content, f, ensure_ascii=False, indent=2)
-                except IOError as e:
+                    with open(temp_filename, "w", encoding="utf-8") as f:
+                        json.dump(
+                            {"timestamp": time.time(), "data": result},
+                            f,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                    os.replace(temp_filename, cache_filename)
+                except OSError as e:
                     print(f"캐시 파일 쓰기 오류: {e}")
+                    try:
+                        if os.path.exists(temp_filename):
+                            os.remove(temp_filename)
+                    except OSError:
+                        pass
 
             return result
         return wrapper
     return decorator
 
 
+def _meal_cache_lifetime(date, **_kwargs):
+    """지난 날짜 급식은 장기 캐시, 오늘/미래 급식은 비교적 짧게 캐시합니다."""
+    try:
+        requested = datetime.strptime(str(date), "%Y%m%d").date()
+        if requested < datetime.now().date():
+            return getattr(config, "MEAL_PAST_CACHE_LIFETIME", 30 * 24 * 60 * 60)
+    except ValueError:
+        pass
+    return getattr(config, "MEAL_CACHE_LIFETIME", 12 * 60 * 60)
+
+
 # --- NEIS API 연동 함수 ---
 
-@file_cache(lifetime=config.CACHE_LIFETIME)
+@file_cache(lifetime=_meal_cache_lifetime, cache_empty=True)
 def get_meal(date):
     """지정된 날짜의 급식 정보를 NEIS API에서 가져옵니다."""
     url = (
@@ -62,34 +142,32 @@ def get_meal(date):
     )
     try:
         response = requests.get(url, timeout=5)
-        response.raise_for_status()  # 200 OK가 아니면 예외 발생
+        response.raise_for_status()
         data = response.json()
 
-        # API 에러 처리
-        if 'RESULT' in data:
-            error_code = data['RESULT']['CODE']
-            if error_code != 'INFO-000':
-                print(f"NEIS API 오류 (급식): {data['RESULT']['MESSAGE']}")
+        if "RESULT" in data:
+            error_code = data["RESULT"]["CODE"]
+            if error_code == "INFO-200":
                 return []
+            if error_code != "INFO-000":
+                raise NeisRequestError(f"급식 API: {data['RESULT'].get('MESSAGE', error_code)}")
 
         meal_data = []
-        rows = data.get('mealServiceDietInfo', [{}])[1].get('row', [])
+        rows = data.get("mealServiceDietInfo", [{}, {}])[1].get("row", [])
         for row in rows:
             meal_data.append({
-                "time": row['MMEAL_SC_NM'],
-                "menu": row['DDISH_NM'].replace('<br/>', '\n')
+                "time": row["MMEAL_SC_NM"],
+                "menu": row["DDISH_NM"].replace("<br/>", "\n")
             })
         return meal_data
 
     except requests.exceptions.RequestException as e:
-        print(f"API 요청 오류 (급식): {e}")
-        return []
-    except (KeyError, IndexError, json.JSONDecodeError) as e:
-        print(f"API 응답 처리 오류 (급식): {e}")
-        return []
+        raise NeisRequestError(f"급식 네트워크 오류: {e}") from e
+    except (KeyError, IndexError, ValueError, json.JSONDecodeError) as e:
+        raise NeisRequestError(f"급식 응답 처리 오류: {e}") from e
 
 
-@file_cache(lifetime=config.CACHE_LIFETIME)
+@file_cache(lifetime=lambda *_args, **_kwargs: getattr(config, "TIMETABLE_CACHE_LIFETIME", 6 * 60 * 60), cache_empty=True)
 def get_timetable_range(grade, classroom, start_date, end_date):
     """지정된 기간의 시간표 정보를 NEIS API에서 한 번에 가져옵니다."""
     url = (
@@ -106,36 +184,39 @@ def get_timetable_range(grade, classroom, start_date, end_date):
         response.raise_for_status()
         data = response.json()
 
-        if 'RESULT' in data:
-            error_code = data['RESULT']['CODE']
-            if error_code != 'INFO-000':
-                # 데이터가 없는 경우(INFO-200)는 정상 처리
-                if error_code == 'INFO-200':
-                    return []
-                print(f"NEIS API 오류 (시간표): {data['RESULT']['MESSAGE']}")
+        if "RESULT" in data:
+            error_code = data["RESULT"]["CODE"]
+            if error_code == "INFO-200":
                 return []
+            if error_code != "INFO-000":
+                raise NeisRequestError(f"시간표 API: {data['RESULT'].get('MESSAGE', error_code)}")
 
         weekly_schedule = {}
-        rows = data.get('hisTimetable', [{}])[1].get('row', [])
+        rows = data.get("hisTimetable", [{}, {}])[1].get("row", [])
         for row in rows:
             day = row["ALL_TI_YMD"]
             period = int(row["PERIO"])
             subject = row["ITRT_CNTNT"]
-            
+
             if day not in weekly_schedule:
                 weekly_schedule[day] = {}
             weekly_schedule[day][period] = subject
 
         result = []
         for day, periods in sorted(weekly_schedule.items()):
-            day_timetable = [periods[p] for p in sorted(periods.keys())]
-            result.append({"date": day, "timetable": day_timetable})
+            ordered_periods = sorted(periods.keys())
+            day_timetable = [periods[p] for p in ordered_periods]
+            # 기존 프런트 호환용 timetable 리스트는 유지하면서, 개인 시간표 변경 감지에서는
+            # 결강 등으로 교시가 비연속적이어도 정확히 비교할 수 있도록 period_map도 함께 저장합니다.
+            result.append({
+                "date": day,
+                "timetable": day_timetable,
+                "period_map": {str(p): periods[p] for p in ordered_periods},
+            })
 
         return result
 
     except requests.exceptions.RequestException as e:
-        print(f"API 요청 오류 (시간표): {e}")
-        return []
-    except (KeyError, IndexError, json.JSONDecodeError) as e:
-        print(f"API 응답 처리 오류 (시간표): {e}")
-        return []
+        raise NeisRequestError(f"시간표 네트워크 오류: {e}") from e
+    except (KeyError, IndexError, ValueError, json.JSONDecodeError) as e:
+        raise NeisRequestError(f"시간표 응답 처리 오류: {e}") from e

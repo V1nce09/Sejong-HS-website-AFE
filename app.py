@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import os
 import time # time 모듈 추가
 import hashlib
+import re
 import bleach
 
 import config
@@ -56,6 +57,67 @@ def generate_invite_code(grade, classroom):
         secret = "default-secret-for-testing"
     data = f"{secret}-{grade}-{classroom}"
     return hashlib.sha256(data.encode()).hexdigest()[:6].upper()
+
+
+# --- 개인 시간표 설정 ---
+WEEKDAY_NAMES = ["월", "화", "수", "목", "금"]
+GRADE_DAILY_PERIODS = {
+    1: [7, 7, 6, 7, 7],
+    2: [7, 7, 6, 7, 5],
+}
+GRADE_MAX_CLASSROOM = {1: 9, 2: 10}
+GRADE2_ELECTIVE_SLOTS = {
+    (0, 1), (0, 2), (0, 5), (0, 6),
+    (1, 2), (1, 5),
+    (2, 2), (2, 3), (2, 5),
+    (3, 1), (3, 2), (3, 3),
+    (4, 1), (4, 2), (4, 4),
+}
+ELECTIVE_SUBJECT_GROUPS = {
+    "humanities": [
+        "윤리와 사상", "법과 사회", "한국지리 탐구", "경제", "일본어 회화",
+        "사회 문제 탐구", "동아시아 역사 기행",
+    ],
+    "science": [
+        "역학과 에너지", "물질과 에너지", "세포와 물질대사", "지구시스템과학",
+        "융합과학 탐구", "인공지능 기초", "지식 재산 일반", "인공지능 수학",
+    ],
+}
+ALLOWED_ELECTIVE_SUBJECTS = {
+    subject for subjects in ELECTIVE_SUBJECT_GROUPS.values() for subject in subjects
+}
+
+def _is_supported_timetable_class(grade, classroom):
+    return (
+        grade in GRADE_DAILY_PERIODS
+        and 1 <= classroom <= GRADE_MAX_CLASSROOM[grade]
+    )
+
+def _active_period(grade, day, period):
+    periods = GRADE_DAILY_PERIODS.get(grade)
+    return bool(periods and 0 <= day <= 4 and 1 <= period <= periods[day])
+
+def _load_base_timetable(db, grade, classroom):
+    rows = db.execute(
+        "SELECT day_of_week, period, subject FROM class_base_timetable "
+        "WHERE grade = ? AND classroom = ? ORDER BY day_of_week, period",
+        (grade, classroom),
+    ).fetchall()
+    return {(row["day_of_week"], row["period"]): row["subject"] for row in rows}
+
+def _load_user_electives(db, user_id):
+    rows = db.execute(
+        "SELECT day_of_week, period, subject FROM custom_timetable "
+        "WHERE user_id = ? ORDER BY day_of_week, period",
+        (user_id,),
+    ).fetchall()
+    return {(row["day_of_week"], row["period"]): row["subject"] for row in rows}
+
+def _get_timetable_profile(db, user_id):
+    return db.execute(
+        "SELECT grade, classroom, updated_at FROM timetable_profiles WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
 
 # --- 라우트 정의 ---
 
@@ -443,53 +505,394 @@ def unlock_class():
 
 # 📌 API 데이터 요청
 @app.route("/api/data", methods=["GET"])
-def api_data(): 
+def api_data():
     date_str = request.args.get("date", datetime.now().strftime("%Y%m%d"))
     grade = request.args.get("grade", "1")
     classroom = request.args.get("classroom", "1")
-    
-    response_data = {}
+    data_type = request.args.get("data_type", "all").lower()
 
-    # 급식 데이터
-    meal_data = neis.get_meal(date_str)
-    response_data["meal"] = meal_data
+    if data_type not in {"all", "meal", "timetable"}:
+        return jsonify({"error": "invalid data_type"}), 400
 
-    # 시간표 데이터
     try:
-        base_date = datetime.strptime(date_str, "%Y%m%d")
+        datetime.strptime(date_str, "%Y%m%d")
+    except ValueError:
+        return jsonify({"error": "date must be YYYYMMDD"}), 400
 
-        # NEIS API가 주의 시작일(월요일 등)부터 조회하면 데이터를 못가져오는 경우가 있어, 
-        # 요청 날짜로부터 4일 이전부터 조회하여 API 제약을 우회합니다.
-        start_date_for_api = (base_date - timedelta(days=4)).strftime("%Y%m%d")
-        end_date_for_api = (base_date + timedelta(days=13)).strftime("%Y%m%d")
+    response_data = {"grade": grade, "classroom": classroom, "date": date_str}
 
-        all_timetable_data = neis.get_timetable_range(grade, classroom, start_date_for_api, end_date_for_api)
-        
-        # API로부터 받은 데이터에서, 사용자가 실제로 요청한 날짜부터 10일치(주중)만 필터링합니다.
-        filtered_timetable = []
-        fetched_count = 0
-        for item in all_timetable_data:
-            current_item_date = datetime.strptime(item['date'], "%Y%m%d")
-            # 요청된 날짜(base_date) 이후이고, 주중(weekday < 5)인 경우에만 추가
-            if current_item_date >= base_date and current_item_date.weekday() < 5:
-                filtered_timetable.append(item)
-                fetched_count += 1
-            
-            if fetched_count >= 10: # 최대 10일치만 가져옴
-                break
+    # data_type을 실제로 반영하여 급식 요청 때 시간표 API를, 시간표 요청 때 급식 API를 호출하지 않습니다.
+    if data_type in {"all", "meal"}:
+        response_data["meal"] = neis.get_meal(date_str)
 
-        response_data["timetable"] = filtered_timetable
+    if data_type in {"all", "timetable"}:
+        try:
+            base_date = datetime.strptime(date_str, "%Y%m%d")
 
+            # 기존 조회 범위를 유지합니다. 이 함수 자체는 파일 캐시되어 같은 조건의 다중 사용자 요청을 공유합니다.
+            start_date_for_api = (base_date - timedelta(days=4)).strftime("%Y%m%d")
+            end_date_for_api = (base_date + timedelta(days=13)).strftime("%Y%m%d")
+            all_timetable_data = neis.get_timetable_range(grade, classroom, start_date_for_api, end_date_for_api)
+
+            filtered_timetable = []
+            for item in all_timetable_data:
+                current_item_date = datetime.strptime(item["date"], "%Y%m%d")
+                if current_item_date >= base_date and current_item_date.weekday() < 5:
+                    filtered_timetable.append(item)
+                if len(filtered_timetable) >= 10:
+                    break
+
+            response_data["timetable"] = filtered_timetable
+        except Exception as e:
+            print(f"시간표 데이터 처리 중 오류 발생 ({date_str}): {e}")
+            response_data["timetable"] = []
+
+    response = jsonify(response_data)
+    # 같은 브라우저에서 짧은 시간 내 새로고침/재방문 시 서버 요청 자체도 줄입니다.
+    response.headers["Cache-Control"] = "private, max-age=300, stale-while-revalidate=60"
+    return response
+
+
+# 📌 시간표용 반 등록 API
+@app.route("/api/timetable_profile", methods=["GET", "POST"])
+def timetable_profile():
+    if g.user is None:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
+    db = database.get_db()
+    if request.method == "GET":
+        profile = _get_timetable_profile(db, g.user["id"])
+        suggested = None
+        try:
+            suggested_grade = int(g.user["grade"]) if g.user["grade"] is not None else None
+            suggested_classroom = int(g.user["classroom"]) if g.user["classroom"] is not None else None
+            if suggested_grade is not None and suggested_classroom is not None and _is_supported_timetable_class(suggested_grade, suggested_classroom):
+                suggested = {"grade": suggested_grade, "classroom": suggested_classroom}
+        except (TypeError, ValueError):
+            pass
+
+        return jsonify({
+            "success": True,
+            "profile": ({"grade": profile["grade"], "classroom": profile["classroom"]} if profile else None),
+            "suggested": suggested,
+            "elective_subjects": ELECTIVE_SUBJECT_GROUPS,
+            "elective_slots": [
+                {"day": day, "period": period} for day, period in sorted(GRADE2_ELECTIVE_SLOTS)
+            ],
+        })
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        grade = int(payload.get("grade"))
+        classroom = int(payload.get("classroom"))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "학년/반 값이 올바르지 않습니다."}), 400
+
+    if not _is_supported_timetable_class(grade, classroom):
+        return jsonify({"success": False, "message": "현재 개인 시간표는 1·2학년만 지원합니다."}), 400
+
+    now = datetime.now().isoformat()
+    db.execute(
+        "INSERT INTO timetable_profiles (user_id, grade, classroom, updated_at) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(user_id) DO UPDATE SET grade = excluded.grade, classroom = excluded.classroom, updated_at = excluded.updated_at",
+        (g.user["id"], grade, classroom, now),
+    )
+    # 1학년으로 변경하면 2학년용 선택과목 설정은 제거합니다.
+    if grade != 2:
+        db.execute("DELETE FROM custom_timetable WHERE user_id = ?", (g.user["id"],))
+    db.commit()
+    return jsonify({"success": True, "profile": {"grade": grade, "classroom": classroom}})
+
+
+# 📌 2학년 선택과목 조회/저장 API
+@app.route("/api/custom_timetable", methods=["GET", "POST"])
+def custom_timetable():
+    if g.user is None:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
+    db = database.get_db()
+    profile = _get_timetable_profile(db, g.user["id"])
+    if profile is None:
+        return jsonify({"success": False, "message": "먼저 시간표 설정에서 반을 등록해주세요.", "needs_registration": True}), 409
+    if int(profile["grade"]) != 2:
+        return jsonify({
+            "success": False,
+            "message": "22개정 이슈로 커스텀 시간표는 올해 2학년부터 제공합니다.",
+            "grade": int(profile["grade"]),
+        }), 403
+
+    if request.method == "GET":
+        electives = _load_user_electives(db, g.user["id"])
+        cells = [
+            {"day": day, "period": period, "subject": electives.get((day, period), "")}
+            for day, period in sorted(GRADE2_ELECTIVE_SLOTS)
+        ]
+        response = jsonify({
+            "success": True,
+            "cells": cells,
+            "subject_groups": ELECTIVE_SUBJECT_GROUPS,
+        })
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
+
+    payload = request.get_json(silent=True) or {}
+    cells = payload.get("cells")
+    if not isinstance(cells, list) or len(cells) > len(GRADE2_ELECTIVE_SLOTS):
+        return jsonify({"success": False, "message": "선택과목 데이터 형식이 올바르지 않습니다."}), 400
+
+    normalized = []
+    seen = set()
+    for cell in cells:
+        if not isinstance(cell, dict):
+            return jsonify({"success": False, "message": "선택과목 셀 형식이 올바르지 않습니다."}), 400
+        try:
+            day = int(cell.get("day"))
+            period = int(cell.get("period"))
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "요일/교시 값이 올바르지 않습니다."}), 400
+        key = (day, period)
+        subject = str(cell.get("subject", "")).strip()
+        if key not in GRADE2_ELECTIVE_SLOTS or key in seen:
+            return jsonify({"success": False, "message": "선택과목을 설정할 수 없는 교시가 포함되어 있습니다."}), 400
+        if subject and subject not in ALLOWED_ELECTIVE_SUBJECTS:
+            return jsonify({"success": False, "message": f"개설되지 않은 선택과목입니다: {subject}"}), 400
+        seen.add(key)
+        normalized.append((day, period, subject))
+
+    try:
+        db.execute("DELETE FROM custom_timetable WHERE user_id = ?", (g.user["id"],))
+        now = datetime.now().isoformat()
+        db.executemany(
+            "INSERT INTO custom_timetable (user_id, day_of_week, period, subject, color, updated_at) "
+            "VALUES (?, ?, ?, ?, '#ffffff', ?)",
+            [
+                (g.user["id"], day, period, subject, now)
+                for day, period, subject in normalized if subject
+            ],
+        )
+        db.commit()
     except Exception as e:
-        print(f"시간표 데이터 처리 중 오류 발생 ({date_str}): {e}")
-        response_data["timetable"] = []
+        db.rollback()
+        print(f"선택과목 저장 오류: {e}")
+        return jsonify({"success": False, "message": "선택과목 저장 중 오류가 발생했습니다."}), 500
 
-    response_data["grade"] = grade
-    response_data["classroom"] = classroom
-    response_data["date"] = date_str
+    return jsonify({"success": True, "message": "선택과목을 저장했습니다."})
 
-    return jsonify(response_data)
 
+# 📌 개인 시간표: 관리자 기준표 + NEIS 변경 감지 + 2학년 선택과목 병합
+@app.route("/api/personal_timetable", methods=["GET"])
+def personal_timetable():
+    if g.user is None:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
+    date_str = request.args.get("date", datetime.now().strftime("%Y%m%d"))
+    try:
+        selected_date = datetime.strptime(date_str, "%Y%m%d")
+    except ValueError:
+        return jsonify({"success": False, "message": "date must be YYYYMMDD"}), 400
+
+    db = database.get_db()
+    profile = _get_timetable_profile(db, g.user["id"])
+    if profile is None:
+        return jsonify({"success": False, "message": "시간표 설정에서 먼저 반을 등록해주세요.", "needs_registration": True}), 409
+
+    grade = int(profile["grade"])
+    classroom = int(profile["classroom"])
+    monday = selected_date - timedelta(days=selected_date.weekday())
+    friday = monday + timedelta(days=4)
+
+    # /api/data와 같은 조회 범위를 사용해, 사용자가 이미 학교 시간표를 열었다면
+    # 동일한 NEIS 파일 캐시를 그대로 재사용합니다.
+    range_start_date = selected_date - timedelta(days=4)
+    if selected_date.weekday() >= 5:
+        range_start_date = monday
+    neis_range_start = range_start_date.strftime("%Y%m%d")
+    neis_range_end = (selected_date + timedelta(days=13)).strftime("%Y%m%d")
+    try:
+        neis_days = neis.get_timetable_range(
+            str(grade), str(classroom), neis_range_start, neis_range_end
+        )
+    except Exception as e:
+        print(f"개인 시간표 NEIS 처리 오류: {e}")
+        neis_days = []
+
+    actual = {}
+    for day_data in neis_days:
+        try:
+            day_date = datetime.strptime(day_data["date"], "%Y%m%d")
+        except (KeyError, ValueError):
+            continue
+        if not (monday.date() <= day_date.date() <= friday.date()):
+            continue
+        day_index = day_date.weekday()
+        if not 0 <= day_index <= 4:
+            continue
+        period_map = day_data.get("period_map")
+        if isinstance(period_map, dict) and period_map:
+            for raw_period, subject in period_map.items():
+                try:
+                    period = int(raw_period)
+                except (TypeError, ValueError):
+                    continue
+                actual[(day_index, period)] = str(subject).strip()
+        else:
+            # 이전 버전에서 생성된 캐시 파일과의 호환
+            for period, subject in enumerate(day_data.get("timetable", []), start=1):
+                actual[(day_index, period)] = str(subject).strip()
+
+    base = _load_base_timetable(db, grade, classroom)
+    electives = _load_user_electives(db, g.user["id"]) if grade == 2 else {}
+    alerts = []
+    days = []
+
+    for day in range(5):
+        date_value = monday + timedelta(days=day)
+        cells = []
+        for period in range(1, 8):
+            active = _active_period(grade, day, period)
+            if not active:
+                cells.append({"period": period, "active": False, "subject": "", "changed": False, "elective": False})
+                continue
+
+            is_elective = grade == 2 and (day, period) in GRADE2_ELECTIVE_SLOTS
+            base_subject = base.get((day, period), "")
+            actual_subject = actual.get((day, period), "")
+            changed = False
+
+            if is_elective:
+                display_subject = electives.get((day, period), "") or "선택과목 미설정"
+            else:
+                if base_subject and actual_subject and base_subject != actual_subject:
+                    changed = True
+                    display_subject = actual_subject
+                    alerts.append({
+                        "day": day,
+                        "day_name": WEEKDAY_NAMES[day],
+                        "date": date_value.strftime("%Y%m%d"),
+                        "period": period,
+                        "from": base_subject,
+                        "to": actual_subject,
+                    })
+                else:
+                    display_subject = actual_subject or base_subject or "—"
+
+            cells.append({
+                "period": period,
+                "active": True,
+                "subject": display_subject,
+                "changed": changed,
+                "elective": is_elective,
+                "base_subject": base_subject,
+                "actual_subject": actual_subject,
+            })
+        days.append({
+            "day": day,
+            "day_name": WEEKDAY_NAMES[day],
+            "date": date_value.strftime("%Y%m%d"),
+            "cells": cells,
+        })
+
+    required_common_slots = [
+        (day, period)
+        for day in range(5)
+        for period in range(1, 8)
+        if _active_period(grade, day, period)
+        and not (grade == 2 and (day, period) in GRADE2_ELECTIVE_SLOTS)
+    ]
+    baseline_configured = all(bool(base.get(key, "").strip()) for key in required_common_slots)
+
+    response = jsonify({
+        "success": True,
+        "profile": {"grade": grade, "classroom": classroom},
+        "baseline_configured": baseline_configured,
+        "alerts": alerts,
+        "days": days,
+        "elective_subjects": ELECTIVE_SUBJECT_GROUPS if grade == 2 else {},
+    })
+    response.headers["Cache-Control"] = "private, no-store"
+    return response
+
+
+# 📌 관리자: 반별 기준(본래) 시간표 설정
+@app.route("/api/admin/base_timetable", methods=["GET", "POST"])
+def admin_base_timetable():
+    if g.user is None or g.user["userid"] != "admin":
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+
+    if request.method == "GET":
+        try:
+            grade = int(request.args.get("grade", ""))
+            classroom = int(request.args.get("classroom", ""))
+        except ValueError:
+            return jsonify({"success": False, "message": "학년/반 값이 올바르지 않습니다."}), 400
+    else:
+        payload = request.get_json(silent=True) or {}
+        try:
+            grade = int(payload.get("grade"))
+            classroom = int(payload.get("classroom"))
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "학년/반 값이 올바르지 않습니다."}), 400
+
+    if not _is_supported_timetable_class(grade, classroom):
+        return jsonify({"success": False, "message": "현재 기준 시간표 설정은 1·2학년만 지원합니다."}), 400
+
+    db = database.get_db()
+    if request.method == "GET":
+        base = _load_base_timetable(db, grade, classroom)
+        cells = [
+            {"day": day, "period": period, "subject": base.get((day, period), "")}
+            for day in range(5) for period in range(1, 8) if _active_period(grade, day, period)
+        ]
+        return jsonify({
+            "success": True,
+            "grade": grade,
+            "classroom": classroom,
+            "cells": cells,
+            "daily_periods": GRADE_DAILY_PERIODS[grade],
+            "elective_slots": ([{"day": d, "period": p} for d, p in sorted(GRADE2_ELECTIVE_SLOTS)] if grade == 2 else []),
+        })
+
+    cells = payload.get("cells")
+    if not isinstance(cells, list) or len(cells) > 35:
+        return jsonify({"success": False, "message": "기준 시간표 데이터 형식이 올바르지 않습니다."}), 400
+
+    normalized = []
+    seen = set()
+    for cell in cells:
+        if not isinstance(cell, dict):
+            return jsonify({"success": False, "message": "시간표 셀 형식이 올바르지 않습니다."}), 400
+        try:
+            day = int(cell.get("day"))
+            period = int(cell.get("period"))
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "요일/교시 값이 올바르지 않습니다."}), 400
+        subject = str(cell.get("subject", "")).strip()
+        key = (day, period)
+        if key in seen or not _active_period(grade, day, period):
+            return jsonify({"success": False, "message": "유효하지 않은 요일/교시가 포함되어 있습니다."}), 400
+        if len(subject) > 40:
+            return jsonify({"success": False, "message": "과목명은 40자 이하로 입력해주세요."}), 400
+        seen.add(key)
+        normalized.append((day, period, subject))
+
+    try:
+        db.execute("DELETE FROM class_base_timetable WHERE grade = ? AND classroom = ?", (grade, classroom))
+        now = datetime.now().isoformat()
+        db.executemany(
+            "INSERT INTO class_base_timetable (grade, classroom, day_of_week, period, subject, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (grade, classroom, day, period, subject, now)
+                for day, period, subject in normalized if subject
+            ],
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print(f"기준 시간표 저장 오류: {e}")
+        return jsonify({"success": False, "message": "기준 시간표 저장 중 오류가 발생했습니다."}), 500
+
+    return jsonify({"success": True, "message": f"{grade}학년 {classroom}반 기준 시간표를 저장했습니다."})
 
 
 # 📌 [NEW] 초대 코드로 내 클래스 추가 API

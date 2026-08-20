@@ -21,5 +21,11 @@ SD_SCHUL_CODE = os.getenv('SD_SCHUL_CODE')
 SEM = os.getenv("SEM","1")
 
 # 캐시 설정
-CACHE_LIFETIME = 3600  # 캐시 유효 시간 (초), 1시간
+# NEIS 공유 캐시 설정
+# 지난 급식은 사실상 바뀌지 않으므로 길게, 오늘/미래 급식과 시간표는 비교적 짧게 유지합니다.
+MEAL_CACHE_LIFETIME = int(os.getenv("MEAL_CACHE_LIFETIME", str(12 * 60 * 60)))       # 12시간
+MEAL_PAST_CACHE_LIFETIME = int(os.getenv("MEAL_PAST_CACHE_LIFETIME", str(30 * 24 * 60 * 60)))  # 30일
+TIMETABLE_CACHE_LIFETIME = int(os.getenv("TIMETABLE_CACHE_LIFETIME", str(6 * 60 * 60)))  # 6시간
+CACHE_STALE_MAX_AGE = int(os.getenv("CACHE_STALE_MAX_AGE", str(7 * 24 * 60 * 60)))  # 장애 시 최대 7일 stale 사용
+CACHE_FILE_MAX_AGE = int(os.getenv("CACHE_FILE_MAX_AGE", str(45 * 24 * 60 * 60)))  # 오래된 캐시 파일 정리 기준
 CACHE_DIR = os.path.join(BASE_DIR, "cache")

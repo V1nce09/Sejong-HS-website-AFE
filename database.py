@@ -57,8 +57,44 @@ def init_db():
         FOREIGN KEY (author_id) REFERENCES users (id)
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS custom_timetable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 0 AND 4),
+        period INTEGER NOT NULL CHECK(period BETWEEN 1 AND 7),
+        subject TEXT NOT NULL DEFAULT '',
+        color TEXT NOT NULL DEFAULT '#ffffff',
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        UNIQUE(user_id, day_of_week, period)
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS timetable_profiles (
+        user_id INTEGER PRIMARY KEY,
+        grade INTEGER NOT NULL CHECK(grade BETWEEN 1 AND 2),
+        classroom INTEGER NOT NULL CHECK(classroom BETWEEN 1 AND 10),
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS class_base_timetable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        grade INTEGER NOT NULL CHECK(grade BETWEEN 1 AND 2),
+        classroom INTEGER NOT NULL CHECK(classroom BETWEEN 1 AND 10),
+        day_of_week INTEGER NOT NULL CHECK(day_of_week BETWEEN 0 AND 4),
+        period INTEGER NOT NULL CHECK(period BETWEEN 1 AND 7),
+        subject TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL,
+        UNIQUE(grade, classroom, day_of_week, period)
+    )
+    """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_grade_classroom ON posts (grade, classroom)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts (author_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_custom_timetable_user ON custom_timetable (user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_base_timetable_class ON class_base_timetable (grade, classroom)")
     # 기본 관리자 계정 (admin/1234)이 없으면 생성
     cur.execute("SELECT id FROM users WHERE userid = ?", ("admin",))
     if not cur.fetchone():
