@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (name === 'meals') loadMeals();
     if (name === 'news') { loadSchedule(); loadAnnouncements(); }
     if (name === 'about') loadSiteInfo();
+    if (name === 'admin' && isAdmin) loadAdminPanel();
   }
   document.querySelectorAll('[data-nav]').forEach(el => el.addEventListener('click', e => { e.preventDefault(); setSection(el.dataset.nav); }));
   document.querySelectorAll('[data-jump]').forEach(el => el.addEventListener('click', () => setSection(el.dataset.jump)));
@@ -119,6 +120,61 @@ document.addEventListener('DOMContentLoaded', () => {
   $('site-info-edit-toggle')?.addEventListener('click',()=>{$('site-info-view').hidden=true;$('site-info-form').hidden=false;});
   $('site-info-cancel')?.addEventListener('click',()=>{$('site-info-form').hidden=true;$('site-info-view').hidden=false;});
   $('site-info-form')?.addEventListener('submit',async e=>{e.preventDefault();const msg=$('site-info-message');try{const d=await api('/api/site_info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purpose:$('site-purpose-input').value,team:$('site-team-input').value})});msg.textContent=d.message;msg.className='form-message success';await loadSiteInfo();setTimeout(()=>{$('site-info-form').hidden=true;$('site-info-view').hidden=false;},400);}catch(err){msg.textContent=err.message;msg.className='form-message error';}});
+
+  function loadAdminPanel() {
+    const host = $('admin-user-search-results');
+    if (host && !host.dataset.ready) {
+      host.innerHTML = '<div class="admin-empty-state">이름을 입력해 계정을 조회하세요.</div>';
+      host.dataset.ready = '1';
+    }
+  }
+
+  $('admin-user-search-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const host = $('admin-user-search-results');
+    const name = $('admin-user-search-name').value.trim();
+    if (!name) return;
+    host.innerHTML = '<div class="loading-block">조회 중...</div>';
+    try {
+      const d = await api(`/api/admin/users?name=${encodeURIComponent(name)}`);
+      const users = d.users || [];
+      if (!users.length) {
+        host.innerHTML = '<div class="admin-empty-state">검색 결과가 없습니다.</div>';
+        return;
+      }
+      host.innerHTML = users.map(u => {
+        const role = u.is_admin ? '관리자' : (u.is_teacher ? '선생님' : '일반');
+        const posts = (u.posts || []).length
+          ? `<div class="admin-user-posts">${u.posts.map(p => `<a href="${esc(p.url)}"><strong>${esc(p.title)}</strong><span>${esc(p.board_name)} · ${esc(String(p.created_at || '').slice(0,10))}</span></a>`).join('')}</div>`
+          : '<div class="admin-user-no-posts">작성한 글이 없습니다.</div>';
+        return `<article class="admin-user-result"><div class="admin-user-head"><div><strong>${esc(u.name)}</strong><span>${esc(u.student_no || '학번 미등록')}</span></div><span class="admin-role-badge ${u.is_teacher?'teacher':''}">${role}</span></div>${posts}</article>`;
+      }).join('');
+    } catch (err) {
+      host.innerHTML = `<div class="admin-empty-state">${esc(err.message)}</div>`;
+    }
+  });
+
+  async function setTeacherRole(makeTeacher) {
+    const input = $('admin-teacher-student-no');
+    const msg = $('admin-teacher-message');
+    const studentNo = input?.value.trim() || '';
+    try {
+      const d = await api('/api/admin/teacher_role', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({student_no: studentNo, is_teacher: makeTeacher})
+      });
+      msg.textContent = d.message;
+      msg.className = 'form-message success';
+      const searchName = $('admin-user-search-name')?.value.trim();
+      if (searchName) $('admin-user-search-form')?.requestSubmit();
+    } catch (err) {
+      msg.textContent = err.message;
+      msg.className = 'form-message error';
+    }
+  }
+  $('admin-teacher-set')?.addEventListener('click', () => setTeacherRole(true));
+  $('admin-teacher-unset')?.addEventListener('click', () => setTeacherRole(false));
 
   function setClassOptions(select, grade, value='1'){ if(!select)return;const max=Number(grade)===2?10:9;select.innerHTML=Array.from({length:max},(_,i)=>`<option value="${i+1}">${i+1}반</option>`).join('');select.value=String(Math.min(max,Number(value)||1)); }
   async function openTimetableSettings(){ if(!authenticated){location.href='/login';return;} $('timetable-settings-overlay').hidden=false; const gradeSel=$('timetable-profile-grade'), classSel=$('timetable-profile-classroom'), msg=$('timetable-settings-message');msg.textContent=''; try{const d=await api('/api/timetable_profile'); const p=d.profile||d.suggested||{grade:1,classroom:1};gradeSel.value=String(p.grade);setClassOptions(classSel,p.grade,p.classroom);await renderElectiveSettings(Number(p.grade));}catch(e){msg.textContent=e.message;msg.className='form-message error';}}

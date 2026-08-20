@@ -6,7 +6,7 @@
   <title>세종고 통합 포털</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ cache_buster }}">
 </head>
-<body class="portal-v3" data-initial-date="{{ date }}" data-authenticated="{{ 1 if session.get('user') else 0 }}" data-is-admin="{{ 1 if session.get('user') == 'admin' else 0 }}">
+<body class="portal-v3" data-initial-date="{{ date }}" data-authenticated="{{ 1 if session.get('user') else 0 }}" data-is-admin="{{ 1 if session.get('user') == 'admin' else 0 }}" data-is-teacher="{{ 1 if g.user and g.user['is_teacher'] else 0 }}">
   <div class="portal-shell">
     <aside class="portal-sidebar">
       <a class="portal-brand" href="#home" data-nav="home">
@@ -21,12 +21,13 @@
         <button class="portal-nav-item" data-nav="meals">급식</button>
         <button class="portal-nav-item" data-nav="news">학교 소식</button>
         <button class="portal-nav-item" data-nav="about">사이트 정보</button>
+        {% if session.get('user') == 'admin' %}<button class="portal-nav-item" data-nav="admin">관리자</button>{% endif %}
       </nav>
       <div class="portal-sidebar-footer">
         {% if session.get('user') %}
           <div class="sidebar-user">
             <div class="sidebar-avatar">{{ (session.get('display_name') or session.get('user'))[0] | upper }}</div>
-            <div><strong>{{ session.get('display_name') or session.get('user') }}</strong><small>{% if session.get('user') == 'admin' %}관리자{% else %}{{ session.get('student_no') or '학번 미등록' }}{% endif %}</small></div>
+            <div><strong>{{ session.get('display_name') or session.get('user') }}</strong><small>{% if session.get('user') == 'admin' %}관리자{% elif g.user and g.user['is_teacher'] %}선생님{% else %}{{ session.get('student_no') or '학번 미등록' }}{% endif %}</small></div>
           </div>
           <a class="sidebar-auth-link" href="{{ url_for('logout') }}">로그아웃</a>
         {% else %}
@@ -115,6 +116,32 @@
         </div>
         {% if session.get('user') == 'admin' %}<form id="site-info-form" class="content-card site-info-form" hidden><label>만든 취지<textarea id="site-purpose-input" maxlength="5000"></textarea></label><label>제작팀<textarea id="site-team-input" maxlength="5000"></textarea></label><div class="form-actions"><button type="button" id="site-info-cancel" class="secondary-button">취소</button><button type="submit" class="primary-button">저장</button></div><p id="site-info-message" class="form-message"></p></form>{% endif %}
       </section>
+
+
+      {% if session.get('user') == 'admin' %}
+      <section class="portal-section" data-section="admin">
+        <header class="section-header"><div><h1>관리자</h1></div></header>
+        <div class="admin-panel-grid">
+          <article class="content-card admin-account-card">
+            <div class="subsection-heading"><h2>계정 조회</h2></div>
+            <form id="admin-user-search-form" class="admin-search-form">
+              <input id="admin-user-search-name" maxlength="30" placeholder="이름 검색" required>
+              <button class="primary-button" type="submit">조회</button>
+            </form>
+            <div id="admin-user-search-results" class="admin-user-results"></div>
+          </article>
+          <article class="content-card admin-teacher-card">
+            <div class="subsection-heading"><h2>선생님 계정 지정</h2></div>
+            <form id="admin-teacher-role-form" class="admin-search-form">
+              <input id="admin-teacher-student-no" inputmode="numeric" maxlength="5" pattern="[0-9]{5}" placeholder="계정에 등록된 5자리 학번" required>
+              <button id="admin-teacher-set" class="primary-button" type="button">선생님 지정</button>
+              <button id="admin-teacher-unset" class="secondary-button" type="button">지정 해제</button>
+            </form>
+            <p id="admin-teacher-message" class="form-message"></p>
+          </article>
+        </div>
+      </section>
+      {% endif %}
     </main>
   </div>
 

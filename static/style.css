@@ -3244,3 +3244,313 @@ form#write-form {
   .class-detail-section,
   .timetable-section { padding: 24px 16px 32px; }
 }
+
+
+/* Board header ratio hotfix — keep the school seal compact and aligned. */
+.container > .sidebar > a.board-brand {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 16px 4px 14px !important;
+  min-height: 66px;
+  text-decoration: none;
+}
+.container > .sidebar > a.board-brand .board-brand-mark {
+  display: block !important;
+  width: 38px !important;
+  height: 38px !important;
+  min-width: 38px !important;
+  flex: 0 0 38px !important;
+  overflow: hidden !important;
+  border-radius: 50% !important;
+  border: 1px solid #d6dbe5 !important;
+  background: #fff !important;
+}
+.container > .sidebar > a.board-brand .board-brand-mark img {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 38px !important;
+  max-height: 38px !important;
+  object-fit: cover !important;
+}
+.container > .sidebar > a.board-brand strong {
+  display: block;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.25;
+}
+.container > .sidebar > a.board-brand small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.container > .sidebar .board-sidebar-head {
+  margin-top: 10px;
+}
+
+/* Main portal uses the same compact seal size. */
+.portal-v3 .brand-mark {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+}
+.portal-v3 .brand-mark img {
+  width: 100%;
+  height: 100%;
+  max-width: 40px;
+  max-height: 40px;
+  object-fit: cover;
+}
+
+
+/* Board profile menu: own posts */
+.container .profile-mini .profile-dropdown {
+  width: 300px;
+  min-width: 300px;
+  padding: 8px;
+  border: 1px solid #d6dbe5;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 12px 36px rgba(31, 42, 61, .12);
+}
+.container .my-posts-menu { min-width: 0; }
+.container .my-posts-menu-title {
+  padding: 7px 9px 9px;
+  color: #202938;
+  font-size: 13px;
+  font-weight: 800;
+  border-bottom: 1px solid #edf0f4;
+}
+.container .my-posts-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 5px 0;
+}
+.container .my-post-item {
+  display: block;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: #263247;
+  text-decoration: none;
+}
+.container .my-post-item:hover { background: #f1f4f8; }
+.container .my-post-item strong {
+  display: block;
+  overflow: hidden;
+  color: #263247;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.container .my-post-item span {
+  display: block;
+  margin-top: 3px;
+  color: #788397;
+  font-size: 11px;
+}
+.container .my-posts-loading,
+.container .my-posts-empty {
+  display: block;
+  padding: 14px 10px;
+  color: #7b8698;
+  font-size: 12px;
+  text-align: center;
+}
+.container .profile-mini .profile-dropdown .logout-item {
+  margin-top: 4px;
+  border-top: 1px solid #edf0f4;
+  border-radius: 0 0 8px 8px;
+  color: #5c6677;
+  font-size: 12px;
+}
+.container .profile-mini .profile-dropdown .logout-item:hover {
+  background: #f4f6f9;
+  color: #283448;
+}
+.container .board-empty-class {
+  color: #8791a2 !important;
+  cursor: default;
+}
+.container .board-empty-class:hover {
+  background: transparent !important;
+  color: #8791a2 !important;
+}
+@media (max-width: 520px) {
+  .container .profile-mini .profile-dropdown {
+    width: min(300px, calc(100vw - 24px));
+    min-width: 0;
+  }
+}
+
+/* ==========================================================
+   Teacher / admin permissions UI
+   ========================================================== */
+.portal-v3 .portal-nav-item:nth-child(8)::before { content: "⚙"; }
+
+.portal-v3 .admin-panel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+  gap: 18px;
+  align-items: start;
+}
+.portal-v3 .admin-search-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+.portal-v3 .admin-search-form input {
+  min-width: 0;
+  flex: 1;
+  height: 40px;
+  padding: 0 12px;
+}
+.portal-v3 .admin-user-results { display: grid; gap: 10px; }
+.portal-v3 .admin-empty-state,
+.portal-v3 .admin-user-no-posts {
+  padding: 16px 4px;
+  color: #7a8596;
+  font-size: 13px;
+}
+.portal-v3 .admin-user-result {
+  border: 1px solid #e0e5ed;
+  border-radius: 10px;
+  background: #fbfcfe;
+  overflow: hidden;
+}
+.portal-v3 .admin-user-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 14px;
+  border-bottom: 1px solid #e7ebf1;
+  background: #fff;
+}
+.portal-v3 .admin-user-head strong,
+.portal-v3 .admin-user-head span { display: block; }
+.portal-v3 .admin-user-head strong { font-size: 14px; font-weight: 800; }
+.portal-v3 .admin-user-head > div > span { margin-top: 3px; color: #748095; font-size: 12px; }
+.portal-v3 .admin-role-badge {
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #edf0f5;
+  color: #5e6879;
+  font-size: 10px;
+  font-weight: 800;
+}
+.portal-v3 .admin-role-badge.teacher { background: #e6f3ff; color: #276493; }
+.portal-v3 .admin-user-posts { display: grid; }
+.portal-v3 .admin-user-posts a {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-top: 1px solid #edf0f4;
+  color: #253046;
+  text-decoration: none;
+}
+.portal-v3 .admin-user-posts a:first-child { border-top: 0; }
+.portal-v3 .admin-user-posts a:hover { background: #f3f6fa; }
+.portal-v3 .admin-user-posts strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.portal-v3 .admin-user-posts span {
+  flex: 0 0 auto;
+  color: #7c8799;
+  font-size: 10px;
+}
+
+/* Board posts written by teachers are visibly distinguished on the board list. */
+.container .post-list > ul > li.board-post-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px !important;
+  margin-bottom: 9px !important;
+  background: #fff !important;
+}
+.container .post-list > ul > li.board-post-row.teacher-post {
+  background: #eaf6ff !important;
+  border-color: #bfdef3 !important;
+}
+.container .post-list > ul > li.board-post-row.pinned-post {
+  box-shadow: inset 3px 0 0 #3b67b2 !important;
+}
+.container .board-post-main { min-width: 0; flex: 1; }
+.container .board-post-title {
+  display: block;
+  color: #222d3e !important;
+  font-size: 14px;
+  font-weight: 800 !important;
+  text-decoration: none;
+}
+.container .board-post-meta {
+  display: block;
+  margin-top: 5px !important;
+  margin-left: 0 !important;
+  color: #718096 !important;
+  font-size: 11px !important;
+}
+.container .pin-badge {
+  display: inline-block !important;
+  margin-right: 7px !important;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #dceaff;
+  color: #2f5e9d !important;
+  font-size: 10px !important;
+  font-weight: 800;
+  vertical-align: 2px;
+}
+.container .pin-post-btn {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border: 1px solid #ccd5e2;
+  border-radius: 7px;
+  background: #fff;
+  color: #4d5b70;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.container .pin-post-btn:hover { background: #f0f4f8; }
+.container .pin-post-btn:disabled { opacity: .55; cursor: default; }
+.container .post-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.container .post-title-row .post-title { margin-top: 0; min-width: 0; }
+.container .post-staff-actions { display: flex; gap: 7px; flex: 0 0 auto; }
+.container .post-edit-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid #ccd5e2;
+  border-radius: 7px;
+  background: #fff;
+  color: #35435a;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+@media (max-width: 760px) {
+  .portal-v3 .admin-panel-grid { grid-template-columns: 1fr; }
+  .portal-v3 .admin-search-form { flex-wrap: wrap; }
+  .portal-v3 .admin-search-form input { flex-basis: 100%; }
+  .container .post-list > ul > li.board-post-row { align-items: flex-start; }
+  .container .post-title-row { flex-direction: column; }
+}

@@ -2,8 +2,8 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>세종고 통합 포털 - {{ grade }}학년 {{ classroom }}반 글쓰기</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>세종고 통합 포털 - {% if grade == 'admin' and classroom == 'general' %}관리자 전용{% elif classroom == 'notice' %}{{ grade }}학년 공지{% elif classroom == 'combined' %}{{ grade }}학년 통합반{% else %}{{ grade }}학년 {{ classroom }}반{% endif %} {% if edit_mode %}수정{% else %}글쓰기{% endif %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ cache_buster }}">
 </head>
 <body>
 <div class="container">
@@ -17,6 +17,8 @@
         <div class="profile-sub">
           {% if session.get('user') == 'admin' %}
             관리자
+          {% elif g.user and g.user['is_teacher'] %}
+            선생님
           {% else %}
             학번: {{ session.get('student_no') or '등록안됨' }}
           {% endif %}
@@ -24,10 +26,14 @@
       </div>
 
       <!-- 점 버튼 및 드롭다운 -->
-      <div class="profile-actions" aria-hidden="true">
-        <button class="dots-btn" aria-label="메뉴" type="button">⋯</button>
+      <div class="profile-actions">
+        <button class="dots-btn" aria-label="내 메뉴" aria-expanded="false" type="button">⋯</button>
         <div class="profile-dropdown" aria-hidden="true">
-          <a href="{{ url_for('logout') }}" class="dropdown-item">로그아웃</a>
+          <div class="my-posts-menu">
+            <div class="my-posts-menu-title">내가 작성한 글</div>
+            <div class="my-posts-list"><span class="my-posts-loading">불러오는 중...</span></div>
+          </div>
+          <a href="{{ url_for('logout') }}" class="dropdown-item logout-item">로그아웃</a>
         </div>
       </div>
     </div>
@@ -58,34 +64,34 @@
     <!-- 중앙 -->
     <main class="class-detail-section">
       <div class="class-header" style="display: flex; justify-content: space-between; align-items: center; padding-right: 20px; margin-bottom: 10px;">
-        <h1 style="padding-left: 40px;">{{ grade }}학년 {{ classroom }}반 글쓰기</h1>
+        <h1 style="padding-left: 40px;">{% if grade == 'admin' and classroom == 'general' %}관리자 전용{% elif classroom == 'notice' %}{{ grade }}학년 공지{% elif classroom == 'combined' %}{{ grade }}학년 통합반{% else %}{{ grade }}학년 {{ classroom }}반{% endif %} {% if edit_mode %}수정{% else %}글쓰기{% endif %}</h1>
       </div>
       <hr class="class-title-divider" style="border: none; border-top: 2px solid black; margin: 10px 0 20px 0; width: 80vw;">
 
       <form id="write-form" method="POST" style="padding-left: 40px; padding-right: 20px;">
         <div style="margin-bottom: 15px;">
           <label for="title" style="display: block; margin-bottom: 5px; font-weight: bold;">제목</label>
-          <input type="text" id="title" name="title" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" required>
+          <input type="text" id="title" name="title" value="{{ post.title if post else '' }}" required>
         </div>
         <div style="margin-bottom: 15px;">
           <label for="content" style="display: block; margin-bottom: 5px; font-weight: bold;">내용</label>
-          <textarea id="content" name="content" rows="10" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" required></textarea>
+          <textarea id="content" name="content" rows="10" required>{{ post.content if post else '' }}</textarea>
         </div>
         <div style="text-align: right;">
-          <button id="submit-post-btn" type="submit" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em;">작성 완료</button>
-          <button type="button" onclick="history.back()" style="background-color: #f44336; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 1em; margin-left: 10px;">취소</button>
+          <button id="submit-post-btn" class="primary-button" type="submit">{% if edit_mode %}수정 완료{% else %}작성 완료{% endif %}</button>
+          <button class="secondary-button" type="button" onclick="history.back()">취소</button>
         </div>
       </form>
     </main>
 
 </div>
 
-<script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/board.js') }}?v={{ cache_buster }}" defer></script>
 <script>
     document.getElementById('write-form').addEventListener('submit', function() {
         const submitButton = document.getElementById('submit-post-btn');
         submitButton.disabled = true;
-        submitButton.textContent = '작성 중...';
+        submitButton.textContent = {{ "'수정 중...'" if edit_mode else "'작성 중...'" }};
     });
 </script>
 </body>

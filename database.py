@@ -31,6 +31,7 @@ def init_db():
         grade TEXT,
         classroom TEXT,
         student_no TEXT,
+        is_teacher INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     )
     """)
@@ -53,6 +54,8 @@ def init_db():
         title TEXT NOT NULL,
         content TEXT NOT NULL,
         author_id INTEGER NOT NULL, -- users 테이블의 id를 참조
+        is_pinned INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY (author_id) REFERENCES users (id)
     )
@@ -111,6 +114,17 @@ def init_db():
                 ("purpose", "", datetime.now().isoformat()))
     cur.execute("INSERT OR IGNORE INTO site_info (info_key, content, updated_at) VALUES (?, ?, ?)",
                 ("team", "", datetime.now().isoformat()))
+    # 기존 DB를 보존하면서 권한/고정 기능용 컬럼만 자동 마이그레이션합니다.
+    user_columns = {row[1] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
+    if "is_teacher" not in user_columns:
+        cur.execute("ALTER TABLE users ADD COLUMN is_teacher INTEGER NOT NULL DEFAULT 0")
+
+    post_columns = {row[1] for row in cur.execute("PRAGMA table_info(posts)").fetchall()}
+    if "is_pinned" not in post_columns:
+        cur.execute("ALTER TABLE posts ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0")
+    if "updated_at" not in post_columns:
+        cur.execute("ALTER TABLE posts ADD COLUMN updated_at TEXT")
+
     cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_grade_classroom ON posts (grade, classroom)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts (author_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_custom_timetable_user ON custom_timetable (user_id)")
