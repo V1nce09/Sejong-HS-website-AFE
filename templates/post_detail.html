@@ -38,15 +38,17 @@
 
     <!-- 좌측 패널 -->
     <aside class="sidebar">
-      <a href="{{ url_for('main') }}" style="text-decoration: none;"><h2 style="color:#fff;margin:0 0 5px 0; font-size: 32px;">세종고 포털</h2></a>
-      <p style="color:#ccc; margin:0 0 14px 0; font-size: 24px;">Sjh Portal</p>
+      <a href="{{ url_for('main') }}" class="board-brand">
+        <span class="board-brand-mark"><img src="{{ url_for('static', filename='img/school-logo.png') }}" alt="세종고등학교 로고"></span>
+        <span><strong>세종고 포털</strong><small>Sjh Portal</small></span>
+      </a>
 
-      <div style="display: flex; align-items: center; margin-top: 40px;">
-        <h3 style="color:#fff; margin:0; font-size: 20px;">내 클래스</h3>
+      <div class="board-sidebar-head">
+        <h3>내 클래스</h3>
         <button class="add-class-btn">+</button>
       </div>
-      <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.2); margin: 10px 0;">
-      <ul id="my-classes-list" style="list-style: none; padding: 0; margin-top: 10px;">
+      <hr class="board-sidebar-divider">
+      <ul id="my-classes-list" class="board-class-list">
         <!-- 동적으로 추가될 클래스 항목들 -->
       </ul>
 

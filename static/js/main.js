@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   function timetableMarkup(data) {
     const days = data.days || [];
-    return `<div class="timetable-scroll"><table class="portal-timetable"><thead><tr><th>교시</th>${days.map(d=>`<th>${d.day_name}<small>${formatDate(d.date)}</small></th>`).join('')}</tr></thead><tbody>${Array.from({length:7},(_,i)=>i+1).map(period=>`<tr><th>${period}</th>${days.map(d=>{const c=d.cells.find(x=>x.period===period)||{}; if(!c.active)return '<td class="inactive">—</td>'; return `<td class="${c.changed?'changed':''} ${c.elective?'elective':''}">${c.changed?'<span class="change-tag">변경</span>':''}<strong>${esc(c.subject)}</strong></td>`;}).join('')}</tr>`).join('')}</tbody></table></div>${data.baseline_configured?'':'<p class="table-note">관리자가 반별 기준 시간표를 모두 등록하면 공통과목 변경 감지가 활성화됩니다.</p>'}`;
+    return `<div class="timetable-scroll"><table class="portal-timetable"><thead><tr><th>교시</th>${days.map(d=>`<th>${d.day_name}<small>${formatDate(d.date)}</small></th>`).join('')}</tr></thead><tbody>${Array.from({length:7},(_,i)=>i+1).map(period=>`<tr><th>${period}</th>${days.map(d=>{const c=d.cells.find(x=>x.period===period)||{}; if(!c.active)return '<td class="inactive">—</td>'; return `<td class="${c.changed?'changed':''} ${c.elective?'elective':''}">${c.changed?'<span class="change-tag">변경</span>':''}<strong>${esc(c.subject)}</strong></td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
 
   async function loadProfile() {
