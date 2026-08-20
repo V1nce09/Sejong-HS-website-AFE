@@ -3547,6 +3547,23 @@ form#write-form {
   text-decoration: none;
 }
 
+.container .delete-post-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid #d7bcbc;
+  border-radius: 7px;
+  background: #fff;
+  color: #a13f3f;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.container .delete-post-btn:hover { background: #fff5f5; border-color: #cfa8a8; }
+.container .delete-post-btn:disabled { opacity: .55; cursor: default; }
+
 @media (max-width: 760px) {
   .portal-v3 .admin-panel-grid { grid-template-columns: 1fr; }
   .portal-v3 .admin-search-form { flex-wrap: wrap; }

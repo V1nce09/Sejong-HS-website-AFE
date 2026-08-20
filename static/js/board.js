@@ -117,5 +117,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  document.querySelectorAll('.delete-post-btn').forEach(button => {
+    button.addEventListener('click', async e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!confirm('이 게시물을 삭제할까요? 삭제한 글은 복구할 수 없습니다.')) return;
+      button.disabled = true;
+      try {
+        const data = await api(`/api/posts/${button.dataset.postId}/delete`, {method: 'POST'});
+        location.href = data.redirect_url || '/';
+      } catch (err) {
+        alert(err.message);
+        button.disabled = false;
+      }
+    });
+  });
+
   loadMyClasses();
 });

@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   function timetableMarkup(data) {
     const days = data.days || [];
-    return `<div class="timetable-scroll"><table class="portal-timetable"><thead><tr><th>교시</th>${days.map(d=>`<th>${d.day_name}<small>${formatDate(d.date)}</small></th>`).join('')}</tr></thead><tbody>${Array.from({length:7},(_,i)=>i+1).map(period=>`<tr><th>${period}</th>${days.map(d=>{const c=d.cells.find(x=>x.period===period)||{}; if(!c.active)return '<td class="inactive">—</td>'; return `<td class="${c.changed?'changed':''} ${c.elective?'elective':''}">${c.changed?'<span class="change-tag">변경</span>':''}<strong>${esc(c.subject)}</strong></td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;
+    return `<div class="timetable-scroll"><table class="portal-timetable"><thead><tr><th>교시</th>${days.map(d=>`<th>${d.day_name}<small>${formatDate(d.date)}</small></th>`).join('')}</tr></thead><tbody>${Array.from({length:7},(_,i)=>i+1).map(period=>`<tr><th>${period}</th>${days.map(d=>{const c=d.cells.find(x=>x.period===period)||{}; if(!c.active)return '<td class="inactive">—</td>'; return `<td class="${c.changed?'changed':''} ${c.elective?'elective':''}">${c.changed?`<span class="change-tag">${c.change_type==='removed'?'없어짐':'변경'}</span>`:''}<strong>${esc(c.subject)}</strong></td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
 
   async function loadProfile() {

@@ -630,8 +630,37 @@ def post_detail(grade, classroom, post_id):
         formatted_content=formatted_content,
         can_pin=is_staff,
         can_edit=(classroom == "notice" and is_staff),
+        can_delete=bool(g.user and (_is_admin(g.user) or int(post["author_id"]) == int(g.user["id"]))),
         cache_buster=int(time.time()),
     )
+
+
+@app.route("/api/posts/<int:post_id>/delete", methods=["POST"])
+def delete_post(post_id):
+    if g.user is None:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
+    db = database.get_db()
+    post = db.execute(
+        "SELECT id, grade, classroom, author_id FROM posts WHERE id = ?",
+        (post_id,),
+    ).fetchone()
+    if post is None:
+        return jsonify({"success": False, "message": "게시물을 찾을 수 없습니다."}), 404
+
+    # 관리자는 모든 글을 삭제할 수 있고, 그 외 계정은 본인이 작성한 글만 삭제할 수 있습니다.
+    if not (_is_admin(g.user) or int(post["author_id"]) == int(g.user["id"])):
+        return jsonify({"success": False, "message": "이 게시물을 삭제할 권한이 없습니다."}), 403
+
+    route_grade, route_classroom, _ = _post_board_route(post["grade"], post["classroom"])
+    db.execute("DELETE FROM posts WHERE id = ?", (post_id,))
+    db.commit()
+
+    return jsonify({
+        "success": True,
+        "message": "게시물이 삭제되었습니다.",
+        "redirect_url": url_for("class_detail", grade=route_grade, classroom=route_classroom),
+    })
 
 
 @app.route("/api/posts/<int:post_id>/pin", methods=["POST"])
@@ -1050,6 +1079,7 @@ def personal_timetable():
     # 개인 시간표는 같은 주 안에서 캐시 키가 바뀌지 않도록 월~금 범위로 고정합니다.
     neis_range_start = monday.strftime("%Y%m%d")
     neis_range_end = friday.strftime("%Y%m%d")
+    neis_fetch_ok = True
     try:
         neis_days = neis.get_timetable_range(
             str(grade), str(classroom), neis_range_start, neis_range_end
@@ -1057,6 +1087,7 @@ def personal_timetable():
     except Exception as e:
         print(f"개인 시간표 NEIS 처리 오류: {e}")
         neis_days = []
+        neis_fetch_ok = False
 
     actual = {}
     for day_data in neis_days:
@@ -1101,19 +1132,31 @@ def personal_timetable():
             actual_subject = actual.get((day, period), "")
             changed = False
 
+            change_type = ""
             if is_elective:
                 display_subject = electives.get((day, period), "") or "선택과목 미설정"
             else:
-                if base_subject and actual_subject and base_subject != actual_subject:
+                if base_subject and neis_fetch_ok and base_subject != actual_subject:
                     changed = True
-                    display_subject = actual_subject
+                    if actual_subject:
+                        display_subject = actual_subject
+                        change_type = "changed"
+                        alert_to = actual_subject
+                    else:
+                        # 기준 시간표에는 수업이 있지만 NEIS 현재 시간표에서 해당 교시가
+                        # 사라진 경우도 변경사항으로 처리합니다. API 조회 자체가 실패한
+                        # 경우(neis_fetch_ok=False)에는 전 과목 결강으로 오인하지 않습니다.
+                        display_subject = "없어짐"
+                        change_type = "removed"
+                        alert_to = "없어짐"
                     alerts.append({
                         "day": day,
                         "day_name": WEEKDAY_NAMES[day],
                         "date": date_value.strftime("%Y%m%d"),
                         "period": period,
                         "from": base_subject,
-                        "to": actual_subject,
+                        "to": alert_to,
+                        "type": change_type,
                     })
                 else:
                     display_subject = actual_subject or base_subject or "—"
@@ -1123,6 +1166,7 @@ def personal_timetable():
                 "active": True,
                 "subject": display_subject,
                 "changed": changed,
+                "change_type": change_type,
                 "elective": is_elective,
                 "base_subject": base_subject,
                 "actual_subject": actual_subject,
