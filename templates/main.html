@@ -6,7 +6,7 @@
   <title>세종고 통합 포털</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ cache_buster }}">
 </head>
-<body class="portal-v3" data-initial-date="{{ date }}" data-authenticated="{{ 1 if session.get('user') else 0 }}" data-is-admin="{{ 1 if session.get('user') == 'admin' else 0 }}" data-is-teacher="{{ 1 if g.user and g.user['is_teacher'] else 0 }}">
+<body class="portal-v3" data-initial-date="{{ date }}" data-authenticated="{{ 1 if session.get('user') else 0 }}" data-is-admin="{{ 1 if session.get('user') == config['ADMIN_ID'] else 0 }}" data-is-teacher="{{ 1 if g.user and g.user['is_teacher'] else 0 }}">
   <div class="portal-shell">
     <aside class="portal-sidebar">
       <a class="portal-brand" href="#home" data-nav="home">
@@ -21,13 +21,13 @@
         <button class="portal-nav-item" data-nav="meals">급식</button>
         <button class="portal-nav-item" data-nav="news">학교 소식</button>
         <button class="portal-nav-item" data-nav="about">사이트 정보</button>
-        {% if session.get('user') == 'admin' %}<button class="portal-nav-item" data-nav="admin">관리자</button>{% endif %}
+        {% if session.get('user') == config['ADMIN_ID'] %}<button class="portal-nav-item" data-nav="admin">관리자</button>{% endif %}
       </nav>
       <div class="portal-sidebar-footer">
         {% if session.get('user') %}
           <div class="sidebar-user">
             <div class="sidebar-avatar">{{ (session.get('display_name') or session.get('user'))[0] | upper }}</div>
-            <div><strong>{{ session.get('display_name') or session.get('user') }}</strong><small>{% if session.get('user') == 'admin' %}관리자{% elif g.user and g.user['is_teacher'] %}선생님{% else %}{{ session.get('student_no') or '학번 미등록' }}{% endif %}</small></div>
+            <div><strong>{{ session.get('display_name') or session.get('user') }}</strong><small>{% if session.get('user') == config['ADMIN_ID'] %}관리자{% elif g.user and g.user['is_teacher'] %}선생님{% else %}{{ session.get('student_no') or '학번 미등록' }}{% endif %}</small></div>
           </div>
           <a class="sidebar-auth-link" href="{{ url_for('logout') }}">로그아웃</a>
         {% else %}
@@ -82,7 +82,7 @@
       </section>
 
       <section class="portal-section" data-section="timetable">
-        <header class="section-header split"><div><p class="eyebrow">TIMETABLE</p><h1>이번주 시간표</h1></div><div class="header-actions"><button id="timetable-settings-btn" class="secondary-button">시간표 설정</button>{% if session.get('user') == 'admin' %}<button id="admin-base-timetable-btn" class="primary-button">반별 기준 시간표</button>{% endif %}</div></header>
+        <header class="section-header split"><div><p class="eyebrow">TIMETABLE</p><h1>이번주 시간표</h1></div><div class="header-actions"><button id="timetable-settings-btn" class="secondary-button">시간표 설정</button>{% if session.get('user') == config['ADMIN_ID'] %}<button id="admin-base-timetable-btn" class="primary-button">반별 기준 시간표</button>{% endif %}</div></header>
         <div id="timetable-change-alert" class="change-alert" hidden></div>
         <div id="week-timetable" class="content-card timetable-wrap"><div class="loading-block">불러오는 중...</div></div>
       </section>
@@ -101,24 +101,24 @@
         <header class="section-header"><div><p class="eyebrow">SCHOOL NEWS</p><h1>학교 소식</h1></div></header>
         <div class="news-layout">
           <div class="content-card"><div class="subsection-heading"><h2>학사 일정</h2><span>향후 45일</span></div><div id="school-schedule" class="timeline-list"><div class="loading-block">불러오는 중...</div></div></div>
-          <div class="content-card"><div class="subsection-heading"><h2>기타 공지</h2>{% if session.get('user') == 'admin' %}<button id="announcement-write-toggle" class="text-button">공지 작성</button>{% endif %}</div>
-            {% if session.get('user') == 'admin' %}<form id="announcement-form" class="announcement-form" hidden><input id="announcement-title" maxlength="100" placeholder="공지 제목" required><textarea id="announcement-content" maxlength="5000" placeholder="공지 내용"></textarea><div class="form-actions"><button type="button" id="announcement-cancel" class="secondary-button">취소</button><button type="submit" class="primary-button">등록</button></div></form>{% endif %}
+          <div class="content-card"><div class="subsection-heading"><h2>기타 공지</h2>{% if session.get('user') == config['ADMIN_ID'] %}<button id="announcement-write-toggle" class="text-button">공지 작성</button>{% endif %}</div>
+            {% if session.get('user') == config['ADMIN_ID'] %}<form id="announcement-form" class="announcement-form" hidden><input id="announcement-title" maxlength="100" placeholder="공지 제목" required><textarea id="announcement-content" maxlength="5000" placeholder="공지 내용"></textarea><div class="form-actions"><button type="button" id="announcement-cancel" class="secondary-button">취소</button><button type="submit" class="primary-button">등록</button></div></form>{% endif %}
             <div id="announcements-list" class="announcement-list"><div class="loading-block">불러오는 중...</div></div>
           </div>
         </div>
       </section>
 
       <section class="portal-section" data-section="about">
-        <header class="section-header split"><div><p class="eyebrow">ABOUT</p><h1>사이트 정보</h1></div>{% if session.get('user') == 'admin' %}<button id="site-info-edit-toggle" class="secondary-button">사이트 정보 수정</button>{% endif %}</header>
+        <header class="section-header split"><div><p class="eyebrow">ABOUT</p><h1>사이트 정보</h1></div>{% if session.get('user') == config['ADMIN_ID'] %}<button id="site-info-edit-toggle" class="secondary-button">사이트 정보 수정</button>{% endif %}</header>
         <div id="site-info-view" class="about-grid">
           <article class="content-card"><span class="field-label">만든 취지</span><div id="site-purpose" class="prose-content">등록된 내용이 없습니다.</div></article>
           <article class="content-card"><span class="field-label">제작팀</span><div id="site-team" class="prose-content">등록된 내용이 없습니다.</div></article>
         </div>
-        {% if session.get('user') == 'admin' %}<form id="site-info-form" class="content-card site-info-form" hidden><label>만든 취지<textarea id="site-purpose-input" maxlength="5000"></textarea></label><label>제작팀<textarea id="site-team-input" maxlength="5000"></textarea></label><div class="form-actions"><button type="button" id="site-info-cancel" class="secondary-button">취소</button><button type="submit" class="primary-button">저장</button></div><p id="site-info-message" class="form-message"></p></form>{% endif %}
+        {% if session.get('user') == config['ADMIN_ID'] %}<form id="site-info-form" class="content-card site-info-form" hidden><label>만든 취지<textarea id="site-purpose-input" maxlength="5000"></textarea></label><label>제작팀<textarea id="site-team-input" maxlength="5000"></textarea></label><div class="form-actions"><button type="button" id="site-info-cancel" class="secondary-button">취소</button><button type="submit" class="primary-button">저장</button></div><p id="site-info-message" class="form-message"></p></form>{% endif %}
       </section>
 
 
-      {% if session.get('user') == 'admin' %}
+      {% if session.get('user') == config['ADMIN_ID'] %}
       <section class="portal-section" data-section="admin">
         <header class="section-header"><div><h1>관리자</h1></div></header>
         <div class="admin-panel-grid">
@@ -156,7 +156,7 @@
     </div>
   </div>
 
-  {% if session.get('user') == 'admin' %}
+  {% if session.get('user') == config['ADMIN_ID'] %}
   <div id="admin-base-overlay" class="portal-modal-overlay" hidden><div class="portal-modal wide"><button class="modal-x" data-close-modal="admin-base-overlay">×</button><h3>반별 기준 시간표 설정</h3><div class="settings-row"><label>학년<select id="admin-base-grade"><option value="1">1학년</option><option value="2">2학년</option></select></label><label>반<select id="admin-base-classroom"></select></label><button id="admin-base-load" class="secondary-button" type="button">불러오기</button></div><div id="admin-base-editor" class="admin-base-editor"></div><p id="admin-base-message" class="form-message"></p><div class="form-actions"><button class="secondary-button" data-close-modal="admin-base-overlay">취소</button><button id="admin-base-save-btn" class="primary-button">저장</button></div></div></div>
   {% endif %}
 

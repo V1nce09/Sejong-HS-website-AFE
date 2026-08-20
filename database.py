@@ -1,6 +1,6 @@
 import sqlite3
 from flask import g
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 
 import config
@@ -19,7 +19,7 @@ def close_db(exc=None):
         db.close()
 
 def init_db():
-    """데이터베이스 테이블을 초기화하고 기본 관리자 계정을 생성합니다."""
+    """데이터베이스 테이블을 초기화하고 환경변수 기반 관리자 계정을 보장합니다."""
     db = sqlite3.connect(config.DATABASE_PATH)
     cur = db.cursor()
     cur.execute("""
@@ -129,12 +129,21 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts (author_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_custom_timetable_user ON custom_timetable (user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_base_timetable_class ON class_base_timetable (grade, classroom)")
-    # 기본 관리자 계정 (admin/1234)이 없으면 생성
-    cur.execute("SELECT id FROM users WHERE userid = ?", ("admin",))
-    if not cur.fetchone():
+    # 관리자 ID/비밀번호는 배포 환경변수를 단일 기준으로 사용합니다.
+    # 기존 DB에서도 ADMIN_PASSWORD를 변경하면 다음 앱 시작 시 관리자 비밀번호가 갱신됩니다.
+    cur.execute("SELECT id, password FROM users WHERE userid = ?", (config.ADMIN_ID,))
+    admin = cur.fetchone()
+    if admin is None:
         cur.execute(
-            "INSERT INTO users (userid, name, password, created_at) VALUES (?, ?, ?, ?)",
-            ("admin", "관리자", generate_password_hash("1234"), datetime.now().isoformat())
+            "INSERT INTO users (userid, name, password, grade, classroom, student_no, is_teacher, created_at) "
+            "VALUES (?, ?, ?, NULL, NULL, NULL, 0, ?)",
+            (config.ADMIN_ID, "관리자", generate_password_hash(config.ADMIN_PASSWORD), datetime.now().isoformat())
+        )
+    elif not check_password_hash(admin[1], config.ADMIN_PASSWORD):
+        cur.execute(
+            "UPDATE users SET password = ?, name = ?, grade = NULL, classroom = NULL, "
+            "student_no = NULL, is_teacher = 0 WHERE id = ?",
+            (generate_password_hash(config.ADMIN_PASSWORD), "관리자", admin[0])
         )
     db.commit()
     db.close()

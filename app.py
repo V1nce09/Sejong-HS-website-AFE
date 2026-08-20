@@ -52,16 +52,13 @@ def pw_class_count(password):
 
 def generate_invite_code(grade, classroom):
     """학년, 반, 비밀키를 조합하여 고유한 초대 코드를 생성합니다."""
-    secret = app.config.get("SECRET_KEY", "default-secret")
-    # SECRET_KEY가 None일 경우를 대비하여 기본값 제공
-    if not secret:
-        secret = "default-secret-for-testing"
+    secret = app.config["SECRET_KEY"]
     data = f"{secret}-{grade}-{classroom}"
     return hashlib.sha256(data.encode()).hexdigest()[:6].upper()
 
 
 def _is_admin(user):
-    return bool(user and user["userid"] == "admin")
+    return bool(user and user["userid"] == config.ADMIN_ID)
 
 
 def _is_teacher(user):
@@ -301,7 +298,7 @@ def main():
         # 초대 코드 검사
         unlocked_classes = session.get('unlocked_classes', [])
         class_identifier = f"{grade}-{classroom}"
-        is_admin = g.user and g.user['userid'] == 'admin'
+        is_admin = _is_admin(g.user)
 
         if not is_admin and class_identifier not in unlocked_classes:
             return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
@@ -791,12 +788,12 @@ def user_profile():
                 "student_no": student_no,
                 "grade": g.user["grade"],
                 "classroom": g.user["classroom"],
-                "is_admin": g.user["userid"] == "admin",
+                "is_admin": _is_admin(g.user),
                 "is_teacher": _is_teacher(g.user),
             },
         })
 
-    if g.user["userid"] == "admin":
+    if _is_admin(g.user):
         return jsonify({"success": False, "message": "관리자 계정 정보는 이 화면에서 수정하지 않습니다."}), 403
 
     payload = request.get_json(silent=True) or {}
@@ -829,7 +826,7 @@ def site_info():
         info = {row["info_key"]: row["content"] for row in rows}
         return jsonify({"success": True, "purpose": info.get("purpose", ""), "team": info.get("team", "")})
 
-    if g.user is None or g.user["userid"] != "admin":
+    if g.user is None or not _is_admin(g.user):
         return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
     payload = request.get_json(silent=True) or {}
     purpose = str(payload.get("purpose", "")).strip()
@@ -856,7 +853,7 @@ def announcements():
         ).fetchall()
         return jsonify({"success": True, "announcements": [dict(row) for row in rows]})
 
-    if g.user is None or g.user["userid"] != "admin":
+    if g.user is None or not _is_admin(g.user):
         return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
     payload = request.get_json(silent=True) or {}
     title = str(payload.get("title", "")).strip()
@@ -874,7 +871,7 @@ def announcements():
 
 @app.route("/api/announcements/<int:announcement_id>", methods=["DELETE"])
 def delete_announcement(announcement_id):
-    if g.user is None or g.user["userid"] != "admin":
+    if g.user is None or not _is_admin(g.user):
         return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
     db = database.get_db()
     db.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
@@ -1141,7 +1138,7 @@ def personal_timetable():
 # 📌 관리자: 반별 기준(본래) 시간표 설정
 @app.route("/api/admin/base_timetable", methods=["GET", "POST"])
 def admin_base_timetable():
-    if g.user is None or g.user["userid"] != "admin":
+    if g.user is None or not _is_admin(g.user):
         return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
 
     if request.method == "GET":
@@ -1319,7 +1316,7 @@ def admin_user_search():
             "name": row["name"],
             "student_no": _decrypt_student_no(row["student_no"]),
             "is_teacher": bool(row["is_teacher"]),
-            "is_admin": row["userid"] == "admin",
+            "is_admin": row["userid"] == config.ADMIN_ID,
             "posts": posts,
         })
 
@@ -1346,7 +1343,7 @@ def admin_teacher_role():
         return jsonify({"success": False, "message": "같은 학번을 사용하는 계정이 여러 개라 지정할 수 없습니다."}), 409
 
     target = matches[0]
-    if target["userid"] == "admin":
+    if target["userid"] == config.ADMIN_ID:
         return jsonify({"success": False, "message": "관리자 계정은 선생님 계정으로 변경하지 않습니다."}), 400
 
     db.execute("UPDATE users SET is_teacher = ? WHERE id = ?", (1 if make_teacher else 0, target["id"]))

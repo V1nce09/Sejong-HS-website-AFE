@@ -15,7 +15,7 @@
       <div class="profile-text">
         <div class="profile-name">{{ session.get('display_name') or session.get('user') }}</div>
         <div class="profile-sub">
-          {% if session.get('user') == 'admin' %}
+          {% if session.get('user') == config['ADMIN_ID'] %}
             관리자
           {% elif g.user and g.user['is_teacher'] %}
             선생님

@@ -1,13 +1,26 @@
 import os
 
-# AES 암호화 키 설정 (환경 변수)
-os.environ['APP_AES_KEY'] = 'dI0rRkx6mTZi--S97R50jDVkLcQgqB5A2dYFGVjMgCY='
+# AES 암호화 키는 배포 환경변수에서만 읽습니다.
+APP_AES_KEY = os.getenv('APP_AES_KEY')
+if not APP_AES_KEY:
+    raise RuntimeError('APP_AES_KEY environment variable is required')
 
 # 기본 디렉토리
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Flask 설정
-SECRET_KEY = os.getenv('SECRET_KEY')  # 실제 운영 환경에서는 더 복잡하고 안전한 키를 사용해야 합니다.
+SECRET_KEY = os.getenv('SECRET_KEY')
+if not SECRET_KEY:
+    raise RuntimeError('SECRET_KEY environment variable is required')
+
+# 관리자 계정도 소스에 하드코딩하지 않고 배포 환경변수에서만 읽습니다.
+ADMIN_ID = os.getenv('ADMIN_ID')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
+if not ADMIN_ID:
+    raise RuntimeError('ADMIN_ID environment variable is required')
+if not ADMIN_PASSWORD:
+    raise RuntimeError('ADMIN_PASSWORD environment variable is required')
+
 DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
 
 # 데이터베이스 설정

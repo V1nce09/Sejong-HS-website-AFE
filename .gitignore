@@ -1,0 +1,11 @@
+# Runtime data / secrets
+users.db
+cache/
+.env
+*.env
+deployment_secrets*.txt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
