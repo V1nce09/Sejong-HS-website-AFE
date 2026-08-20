@@ -220,3 +220,76 @@ def get_timetable_range(grade, classroom, start_date, end_date):
         raise NeisRequestError(f"시간표 네트워크 오류: {e}") from e
     except (KeyError, IndexError, ValueError, json.JSONDecodeError) as e:
         raise NeisRequestError(f"시간표 응답 처리 오류: {e}") from e
+
+
+@file_cache(lifetime=lambda *_args, **_kwargs: getattr(config, "MEAL_CACHE_LIFETIME", 7 * 24 * 60 * 60), cache_empty=True)
+def get_meal_range(start_date, end_date):
+    """기간 급식을 한 번의 NEIS 요청으로 가져옵니다. 결과는 날짜별 dict입니다."""
+    params = {
+        "KEY": config.API_KEY, "Type": "json", "pIndex": 1, "pSize": 100,
+        "ATPT_OFCDC_SC_CODE": config.ATPT_OFCDC_SC_CODE,
+        "SD_SCHUL_CODE": config.SD_SCHUL_CODE,
+        "MLSV_FROM_YMD": start_date, "MLSV_TO_YMD": end_date,
+    }
+    try:
+        response = requests.get("https://open.neis.go.kr/hub/mealServiceDietInfo", params=params, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        if "RESULT" in data:
+            code = data["RESULT"].get("CODE")
+            if code == "INFO-200":
+                return {}
+            if code != "INFO-000":
+                raise NeisRequestError(f"급식 API: {data['RESULT'].get('MESSAGE', code)}")
+        result = {}
+        rows = data.get("mealServiceDietInfo", [{}, {}])[1].get("row", [])
+        for row in rows:
+            date = row.get("MLSV_YMD", "")
+            if not date:
+                continue
+            result.setdefault(date, []).append({
+                "time": row.get("MMEAL_SC_NM", "급식"),
+                "menu": row.get("DDISH_NM", "").replace("<br/>", "\n"),
+            })
+        return result
+    except requests.exceptions.RequestException as e:
+        raise NeisRequestError(f"기간 급식 네트워크 오류: {e}") from e
+    except (KeyError, IndexError, ValueError, json.JSONDecodeError) as e:
+        raise NeisRequestError(f"기간 급식 응답 처리 오류: {e}") from e
+
+
+@file_cache(lifetime=lambda *_args, **_kwargs: getattr(config, "SCHEDULE_CACHE_LIFETIME", 7 * 24 * 60 * 60), cache_empty=True)
+def get_school_schedule(start_date, end_date):
+    """NEIS 학사일정을 기간 단위로 가져옵니다."""
+    params = {
+        "KEY": config.API_KEY, "Type": "json", "pIndex": 1, "pSize": 100,
+        "ATPT_OFCDC_SC_CODE": config.ATPT_OFCDC_SC_CODE,
+        "SD_SCHUL_CODE": config.SD_SCHUL_CODE,
+        "AA_FROM_YMD": start_date, "AA_TO_YMD": end_date,
+    }
+    try:
+        response = requests.get("https://open.neis.go.kr/hub/SchoolSchedule", params=params, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        if "RESULT" in data:
+            code = data["RESULT"].get("CODE")
+            if code == "INFO-200":
+                return []
+            if code != "INFO-000":
+                raise NeisRequestError(f"학사일정 API: {data['RESULT'].get('MESSAGE', code)}")
+        rows = data.get("SchoolSchedule", [{}, {}])[1].get("row", [])
+        events = []
+        for row in rows:
+            events.append({
+                "date": row.get("AA_YMD", ""),
+                "name": row.get("EVENT_NM", ""),
+                "content": row.get("EVENT_CNTNT", ""),
+                "grade1": row.get("ONE_GRADE_EVENT_YN", "N") == "Y",
+                "grade2": row.get("TW_GRADE_EVENT_YN", "N") == "Y",
+                "grade3": row.get("THREE_GRADE_EVENT_YN", "N") == "Y",
+            })
+        return sorted(events, key=lambda x: x.get("date", ""))
+    except requests.exceptions.RequestException as e:
+        raise NeisRequestError(f"학사일정 네트워크 오류: {e}") from e
+    except (KeyError, IndexError, ValueError, json.JSONDecodeError) as e:
+        raise NeisRequestError(f"학사일정 응답 처리 오류: {e}") from e

@@ -21,11 +21,17 @@ SD_SCHUL_CODE = os.getenv('SD_SCHUL_CODE')
 SEM = os.getenv("SEM","1")
 
 # 캐시 설정
-# NEIS 공유 캐시 설정
-# 지난 급식은 사실상 바뀌지 않으므로 길게, 오늘/미래 급식과 시간표는 비교적 짧게 유지합니다.
-MEAL_CACHE_LIFETIME = int(os.getenv("MEAL_CACHE_LIFETIME", str(12 * 60 * 60)))       # 12시간
-MEAL_PAST_CACHE_LIFETIME = int(os.getenv("MEAL_PAST_CACHE_LIFETIME", str(30 * 24 * 60 * 60)))  # 30일
-TIMETABLE_CACHE_LIFETIME = int(os.getenv("TIMETABLE_CACHE_LIFETIME", str(6 * 60 * 60)))  # 6시간
-CACHE_STALE_MAX_AGE = int(os.getenv("CACHE_STALE_MAX_AGE", str(7 * 24 * 60 * 60)))  # 장애 시 최대 7일 stale 사용
-CACHE_FILE_MAX_AGE = int(os.getenv("CACHE_FILE_MAX_AGE", str(45 * 24 * 60 * 60)))  # 오래된 캐시 파일 정리 기준
+# 무료 서버의 외부 API 호출을 줄이기 위해 급식·학사일정은 7일간 공유 캐시합니다.
+MEAL_CACHE_LIFETIME = int(os.getenv("MEAL_CACHE_LIFETIME", str(7 * 24 * 60 * 60)))
+MEAL_PAST_CACHE_LIFETIME = int(os.getenv("MEAL_PAST_CACHE_LIFETIME", str(7 * 24 * 60 * 60)))
+SCHEDULE_CACHE_LIFETIME = int(os.getenv("SCHEDULE_CACHE_LIFETIME", str(7 * 24 * 60 * 60)))
+TIMETABLE_CACHE_LIFETIME = int(os.getenv("TIMETABLE_CACHE_LIFETIME", str(6 * 60 * 60)))
+WEATHER_CACHE_LIFETIME = int(os.getenv("WEATHER_CACHE_LIFETIME", str(30 * 60)))
+CACHE_STALE_MAX_AGE = int(os.getenv("CACHE_STALE_MAX_AGE", str(14 * 24 * 60 * 60)))
+CACHE_FILE_MAX_AGE = int(os.getenv("CACHE_FILE_MAX_AGE", str(45 * 24 * 60 * 60)))
 CACHE_DIR = os.path.join(BASE_DIR, "cache")
+
+# 세종고등학교(세종특별자치시 조치원읍) 기본 위치. 배포 환경변수로 교체할 수 있습니다.
+WEATHER_LATITUDE = float(os.getenv("WEATHER_LATITUDE", "36.61065"))
+WEATHER_LONGITUDE = float(os.getenv("WEATHER_LONGITUDE", "127.29946"))
+WEATHER_LOCATION_NAME = os.getenv("WEATHER_LOCATION_NAME", "세종고등학교")

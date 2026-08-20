@@ -91,6 +91,26 @@ def init_db():
         UNIQUE(grade, classroom, day_of_week, period)
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS site_info (
+        info_key TEXT PRIMARY KEY,
+        content TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS announcements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """)
+    cur.execute("INSERT OR IGNORE INTO site_info (info_key, content, updated_at) VALUES (?, ?, ?)",
+                ("purpose", "", datetime.now().isoformat()))
+    cur.execute("INSERT OR IGNORE INTO site_info (info_key, content, updated_at) VALUES (?, ?, ?)",
+                ("team", "", datetime.now().isoformat()))
     cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_grade_classroom ON posts (grade, classroom)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts (author_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_custom_timetable_user ON custom_timetable (user_id)")

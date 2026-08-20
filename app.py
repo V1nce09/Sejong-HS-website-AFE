@@ -10,6 +10,7 @@ import bleach
 import config
 import database
 import neis
+import weather
 import crypto_utils
 
 app = Flask(__name__)
@@ -553,6 +554,177 @@ def api_data():
     return response
 
 
+
+# --- 포털 재구성 API ---
+def _parse_yyyymmdd(value):
+    return datetime.strptime(value, "%Y%m%d")
+
+
+def _week_bounds(selected):
+    monday = selected - timedelta(days=selected.weekday())
+    friday = monday + timedelta(days=4)
+    return monday, friday
+
+
+@app.route("/api/week_meals", methods=["GET"])
+def week_meals():
+    date_str = request.args.get("date", datetime.now().strftime("%Y%m%d"))
+    try:
+        selected = _parse_yyyymmdd(date_str)
+    except ValueError:
+        return jsonify({"success": False, "message": "date must be YYYYMMDD"}), 400
+    monday, friday = _week_bounds(selected)
+    data = neis.get_meal_range(monday.strftime("%Y%m%d"), friday.strftime("%Y%m%d"))
+    if not isinstance(data, dict):
+        data = {}
+    days = []
+    for offset in range(5):
+        day = monday + timedelta(days=offset)
+        key = day.strftime("%Y%m%d")
+        days.append({"date": key, "day_name": WEEKDAY_NAMES[offset], "meals": data.get(key, [])})
+    response = jsonify({"success": True, "week_start": monday.strftime("%Y%m%d"), "days": days})
+    response.headers["Cache-Control"] = "private, max-age=300"
+    return response
+
+
+@app.route("/api/weather", methods=["GET"])
+def current_weather():
+    data = weather.get_current_weather()
+    return jsonify({"success": bool(data), "weather": data})
+
+
+@app.route("/api/school_schedule", methods=["GET"])
+def school_schedule():
+    date_str = request.args.get("date", datetime.now().strftime("%Y%m%d"))
+    try:
+        selected = _parse_yyyymmdd(date_str)
+    except ValueError:
+        return jsonify({"success": False, "message": "date must be YYYYMMDD"}), 400
+    # 캐시 키가 매일 달라지지 않도록 이번 주 월요일 기준의 고정 범위를 조회합니다.
+    # 화면에는 선택일 기준 향후 45일만 필터링해서 보여줍니다.
+    week_start, _ = _week_bounds(selected)
+    cache_end = week_start + timedelta(days=55)
+    cached_events = neis.get_school_schedule(week_start.strftime("%Y%m%d"), cache_end.strftime("%Y%m%d"))
+    visible_end = selected + timedelta(days=44)
+    events = [
+        event for event in cached_events
+        if selected.strftime("%Y%m%d") <= event.get("date", "") <= visible_end.strftime("%Y%m%d")
+    ]
+    response = jsonify({
+        "success": True,
+        "from": selected.strftime("%Y%m%d"),
+        "to": visible_end.strftime("%Y%m%d"),
+        "events": events,
+    })
+    response.headers["Cache-Control"] = "private, max-age=300"
+    return response
+
+
+@app.route("/api/user_profile", methods=["GET", "POST"])
+def user_profile():
+    if g.user is None:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+
+    if request.method == "GET":
+        student_no = session.get("student_no", "")
+        return jsonify({
+            "success": True,
+            "user": {
+                "userid": g.user["userid"],
+                "name": g.user["name"],
+                "student_no": student_no,
+                "grade": g.user["grade"],
+                "classroom": g.user["classroom"],
+                "is_admin": g.user["userid"] == "admin",
+            },
+        })
+
+    if g.user["userid"] == "admin":
+        return jsonify({"success": False, "message": "관리자 계정 정보는 이 화면에서 수정하지 않습니다."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name", "")).strip()
+    student_no = str(payload.get("student_no", "")).strip()
+    if not name or len(name) > 30:
+        return jsonify({"success": False, "message": "이름은 1~30자로 입력해주세요."}), 400
+    if not (student_no.isdigit() and len(student_no) == 5):
+        return jsonify({"success": False, "message": "학번은 정확히 5자리 숫자여야 합니다."}), 400
+
+    grade = student_no[0]
+    classroom = str(int(student_no[1:3]))
+    encrypted = crypto_utils.aesgcm_encrypt(student_no.encode())
+    db = database.get_db()
+    db.execute(
+        "UPDATE users SET name = ?, grade = ?, classroom = ?, student_no = ? WHERE id = ?",
+        (name, grade, classroom, encrypted, g.user["id"]),
+    )
+    db.commit()
+    session["student_no"] = student_no
+    session["display_name"] = name
+    return jsonify({"success": True, "message": "사용자 정보를 변경했습니다.", "user": {"name": name, "student_no": student_no}})
+
+
+@app.route("/api/site_info", methods=["GET", "POST"])
+def site_info():
+    db = database.get_db()
+    if request.method == "GET":
+        rows = db.execute("SELECT info_key, content, updated_at FROM site_info").fetchall()
+        info = {row["info_key"]: row["content"] for row in rows}
+        return jsonify({"success": True, "purpose": info.get("purpose", ""), "team": info.get("team", "")})
+
+    if g.user is None or g.user["userid"] != "admin":
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    purpose = str(payload.get("purpose", "")).strip()
+    team = str(payload.get("team", "")).strip()
+    if len(purpose) > 5000 or len(team) > 5000:
+        return jsonify({"success": False, "message": "사이트 정보는 항목별 5000자 이하로 작성해주세요."}), 400
+    now = datetime.now().isoformat()
+    for key, value in (("purpose", purpose), ("team", team)):
+        db.execute(
+            "INSERT INTO site_info (info_key, content, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(info_key) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
+            (key, value, now),
+        )
+    db.commit()
+    return jsonify({"success": True, "message": "사이트 정보를 저장했습니다."})
+
+
+@app.route("/api/announcements", methods=["GET", "POST"])
+def announcements():
+    db = database.get_db()
+    if request.method == "GET":
+        rows = db.execute(
+            "SELECT id, title, content, created_at, updated_at FROM announcements ORDER BY created_at DESC LIMIT 30"
+        ).fetchall()
+        return jsonify({"success": True, "announcements": [dict(row) for row in rows]})
+
+    if g.user is None or g.user["userid"] != "admin":
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+    payload = request.get_json(silent=True) or {}
+    title = str(payload.get("title", "")).strip()
+    content = str(payload.get("content", "")).strip()
+    if not title or len(title) > 100 or len(content) > 5000:
+        return jsonify({"success": False, "message": "제목은 1~100자, 내용은 5000자 이하로 작성해주세요."}), 400
+    now = datetime.now().isoformat()
+    cur = db.execute(
+        "INSERT INTO announcements (title, content, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        (title, content, now, now),
+    )
+    db.commit()
+    return jsonify({"success": True, "message": "공지를 등록했습니다.", "id": cur.lastrowid})
+
+
+@app.route("/api/announcements/<int:announcement_id>", methods=["DELETE"])
+def delete_announcement(announcement_id):
+    if g.user is None or g.user["userid"] != "admin":
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+    db = database.get_db()
+    db.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
+    db.commit()
+    return jsonify({"success": True})
+
+
 # 📌 시간표용 반 등록 API
 @app.route("/api/timetable_profile", methods=["GET", "POST"])
 def timetable_profile():
@@ -701,13 +873,9 @@ def personal_timetable():
     monday = selected_date - timedelta(days=selected_date.weekday())
     friday = monday + timedelta(days=4)
 
-    # /api/data와 같은 조회 범위를 사용해, 사용자가 이미 학교 시간표를 열었다면
-    # 동일한 NEIS 파일 캐시를 그대로 재사용합니다.
-    range_start_date = selected_date - timedelta(days=4)
-    if selected_date.weekday() >= 5:
-        range_start_date = monday
-    neis_range_start = range_start_date.strftime("%Y%m%d")
-    neis_range_end = (selected_date + timedelta(days=13)).strftime("%Y%m%d")
+    # 개인 시간표는 같은 주 안에서 캐시 키가 바뀌지 않도록 월~금 범위로 고정합니다.
+    neis_range_start = monday.strftime("%Y%m%d")
+    neis_range_end = friday.strftime("%Y%m%d")
     try:
         neis_days = neis.get_timetable_range(
             str(grade), str(classroom), neis_range_start, neis_range_end
