@@ -94,12 +94,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadProfile() {
     if (!authenticated) { $('profile-guest').hidden=false; $('profile-content').hidden=true; return; }
-    try { const d=await api('/api/user_profile'); const u=d.user; $('profile-content').hidden=false; $('profile-guest').hidden=true; $('profile-name').textContent=u.name||'-'; $('profile-student-no').textContent=u.is_admin?'관리자':(u.student_no||'미등록'); $('profile-name-input').value=u.name||''; $('profile-student-input').value=u.student_no||''; if(u.is_admin)$('profile-edit-toggle').hidden=true; }
+    try { const d=await api('/api/user_profile'); const u=d.user; $('profile-content').hidden=false; $('profile-guest').hidden=true; $('profile-name').textContent=u.name||'-'; $('profile-student-no').textContent=u.is_admin?'관리자':(u.student_no||'미등록'); $('profile-name-input').value=u.name||'';  if(u.is_admin)$('profile-edit-toggle').hidden=true; }
     catch (_) { $('profile-content').hidden=true; $('profile-guest').hidden=false; }
   }
   $('profile-edit-toggle')?.addEventListener('click',()=>{$('profile-edit-form').hidden=false;$('profile-edit-toggle').hidden=true;});
   $('profile-edit-cancel')?.addEventListener('click',()=>{$('profile-edit-form').hidden=true;$('profile-edit-toggle').hidden=false;});
-  $('profile-edit-form')?.addEventListener('submit',async e=>{e.preventDefault(); const msg=$('profile-edit-message'); try{const d=await api('/api/user_profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('profile-name-input').value,student_no:$('profile-student-input').value})});msg.textContent=d.message;msg.className='form-message success';await loadProfile();setTimeout(()=>location.reload(),500);}catch(err){msg.textContent=err.message;msg.className='form-message error';}});
+  $('profile-edit-form')?.addEventListener('submit',async e=>{e.preventDefault(); const msg=$('profile-edit-message'); try{const d=await api('/api/user_profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('profile-name-input').value})});msg.textContent=d.message;msg.className='form-message success';await loadProfile();setTimeout(()=>location.reload(),500);}catch(err){msg.textContent=err.message;msg.className='form-message error';}});
 
   async function loadBoards() {
     const host=$('boards-list');
@@ -176,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('admin-teacher-set')?.addEventListener('click', () => setTeacherRole(true));
   $('admin-teacher-unset')?.addEventListener('click', () => setTeacherRole(false));
 
-  function setClassOptions(select, grade, value='1'){ if(!select)return;const max=Number(grade)===2?10:9;select.innerHTML=Array.from({length:max},(_,i)=>`<option value="${i+1}">${i+1}반</option>`).join('');select.value=String(Math.min(max,Number(value)||1)); }
+  function setClassOptions(select, grade, value='1'){ if(!select)return;const CLASS_COUNTS={1:10,2:9,3:10};const max=CLASS_COUNTS[Number(grade)]||1;select.innerHTML=Array.from({length:max},(_,i)=>`<option value="${i+1}">${i+1}반</option>`).join('');select.value=String(Math.min(max,Number(value)||1)); }
   async function openTimetableSettings(){ if(!authenticated){location.href='/login';return;} $('timetable-settings-overlay').hidden=false; const gradeSel=$('timetable-profile-grade'), classSel=$('timetable-profile-classroom'), msg=$('timetable-settings-message');msg.textContent=''; try{const d=await api('/api/timetable_profile'); const p=d.profile||d.suggested||{grade:1,classroom:1};gradeSel.value=String(p.grade);setClassOptions(classSel,p.grade,p.classroom);await renderElectiveSettings(Number(p.grade));}catch(e){msg.textContent=e.message;msg.className='form-message error';}}
   $('timetable-settings-btn')?.addEventListener('click',openTimetableSettings);
   $('timetable-profile-grade')?.addEventListener('change',e=>{setClassOptions($('timetable-profile-classroom'),e.target.value);renderElectiveSettings(Number(e.target.value));});

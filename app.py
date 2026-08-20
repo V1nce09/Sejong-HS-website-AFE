@@ -135,7 +135,7 @@ GRADE_DAILY_PERIODS = {
     1: [7, 7, 6, 7, 7],
     2: [7, 7, 6, 7, 5],
 }
-GRADE_MAX_CLASSROOM = {1: 9, 2: 10}
+GRADE_MAX_CLASSROOM = {1: 10, 2: 9, 3: 10}
 GRADE2_ELECTIVE_SLOTS = {
     (0, 1), (0, 2), (0, 5), (0, 6),
     (1, 2), (1, 5),
@@ -157,10 +157,19 @@ ALLOWED_ELECTIVE_SUBJECTS = {
     subject for subjects in ELECTIVE_SUBJECT_GROUPS.values() for subject in subjects
 }
 
+def _is_valid_school_class(grade, classroom):
+    try:
+        grade = int(grade)
+        classroom = int(classroom)
+    except (TypeError, ValueError):
+        return False
+    return grade in GRADE_MAX_CLASSROOM and 1 <= classroom <= GRADE_MAX_CLASSROOM[grade]
+
+
 def _is_supported_timetable_class(grade, classroom):
     return (
         grade in GRADE_DAILY_PERIODS
-        and 1 <= classroom <= GRADE_MAX_CLASSROOM[grade]
+        and _is_valid_school_class(grade, classroom)
     )
 
 def _active_period(grade, day, period):
@@ -217,24 +226,33 @@ def register():
         if pw_class_count(password) < 3:
             return render_template("register.html", error="비밀번호는 소문자·대문자·숫자·특수문자 중 3가지 이상을 포함해야 합니다.")
 
-        # 학번 유효성 검사: 반드시 5자리 숫자
+        # 학번 유효성 검사: 반드시 5자리 숫자 + 실제 학년/반 범위
         if student_no:
             if not (student_no.isdigit() and len(student_no) == 5):
                 return render_template("register.html", error="학번은 정확히 5자리 숫자여야 합니다.")
             # 파싱: 첫자리=학년, 2-3자리=반, 4-5자리=번호
-            grade = student_no[0]
-            classroom = str(int(student_no[1:3]))  # "01" -> "1"
+            grade_num = int(student_no[0])
+            classroom_num = int(student_no[1:3])
+            if not _is_valid_school_class(grade_num, classroom_num):
+                return render_template("register.html", error="존재하지 않는 학년 또는 반입니다.")
+            grade = str(grade_num)
+            classroom = str(classroom_num)
         else:
             grade = None
             classroom = None
 
-        # 학생번호 암호화 (있을 경우) 
+        db = database.get_db()
+
+        # AES-GCM은 같은 학번도 매번 다른 암호문이 생성되므로, 기존 학번을 복호화해 중복을 검사한다.
+        if student_no and _find_users_by_student_no(db, student_no):
+            return render_template("register.html", error="이미 가입된 학번입니다.")
+
+        # 학생번호 암호화 (있을 경우)
         if student_no:
             enc_sn = crypto_utils.aesgcm_encrypt(student_no.encode())
         else:
             enc_sn = None
 
-        db = database.get_db()
         try:
             db.execute(
                 "INSERT INTO users (userid, name, password, grade, classroom, student_no, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -288,7 +306,7 @@ def main():
     if grade and classroom:
         try:
             grade_num, class_num = int(grade), int(classroom)
-            if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
+            if not _is_valid_school_class(grade_num, class_num):
                 flash("존재하지 않는 학급입니다.")
                 return redirect(url_for("main")) # 인자 없이 메인으로
         except ValueError:
@@ -386,7 +404,7 @@ def class_detail(grade, classroom):
     else:
         try:
             grade_num, class_num = int(grade), int(classroom)
-            if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
+            if not _is_valid_school_class(grade_num, class_num):
                 raise ValueError
         except ValueError:
             flash("유효하지 않은 학급 정보입니다.")
@@ -463,6 +481,8 @@ def write_post(grade, classroom):
     else:
         try:
             post_grade, post_classroom = int(grade), int(classroom)
+            if not _is_valid_school_class(post_grade, post_classroom):
+                raise ValueError
         except ValueError:
             return redirect(url_for("main"))
         db = database.get_db()
@@ -638,6 +658,9 @@ def unlock_class():
     if not grade or not classroom:
         flash("잘못된 접근입니다.")
         return redirect(url_for("main"))
+    if not _is_valid_school_class(grade, classroom):
+        flash("존재하지 않는 학급입니다.")
+        return redirect(url_for("main"))
 
     if request.method == "POST":
         submitted_code = request.form.get("invite_code", "").upper()
@@ -667,6 +690,8 @@ def api_data():
 
     if data_type not in {"all", "meal", "timetable"}:
         return jsonify({"error": "invalid data_type"}), 400
+    if data_type in {"all", "timetable"} and not _is_valid_school_class(grade, classroom):
+        return jsonify({"error": "invalid school class"}), 400
 
     try:
         datetime.strptime(date_str, "%Y%m%d")
@@ -798,24 +823,19 @@ def user_profile():
 
     payload = request.get_json(silent=True) or {}
     name = str(payload.get("name", "")).strip()
-    student_no = str(payload.get("student_no", "")).strip()
     if not name or len(name) > 30:
         return jsonify({"success": False, "message": "이름은 1~30자로 입력해주세요."}), 400
-    if not (student_no.isdigit() and len(student_no) == 5):
-        return jsonify({"success": False, "message": "학번은 정확히 5자리 숫자여야 합니다."}), 400
 
-    grade = student_no[0]
-    classroom = str(int(student_no[1:3]))
-    encrypted = crypto_utils.aesgcm_encrypt(student_no.encode())
+    # 일반 사용자는 학번/학년/반을 직접 바꿀 수 없다.
     db = database.get_db()
-    db.execute(
-        "UPDATE users SET name = ?, grade = ?, classroom = ?, student_no = ? WHERE id = ?",
-        (name, grade, classroom, encrypted, g.user["id"]),
-    )
+    db.execute("UPDATE users SET name = ? WHERE id = ?", (name, g.user["id"]))
     db.commit()
-    session["student_no"] = student_no
     session["display_name"] = name
-    return jsonify({"success": True, "message": "사용자 정보를 변경했습니다.", "user": {"name": name, "student_no": student_no}})
+    return jsonify({
+        "success": True,
+        "message": "이름을 변경했습니다.",
+        "user": {"name": name, "student_no": session.get("student_no", "")},
+    })
 
 
 @app.route("/api/site_info", methods=["GET", "POST"])
@@ -1229,12 +1249,8 @@ def add_class_by_code():
 
     # 모든 유효한 학급에 대해 코드를 생성하여 일치하는 것을 찾음
     found_class = None
-    for grade_num in range(1, 4):
-        for class_num in range(1, 11):
-            # 유효성 검사 (1-3학년, 1-10반)
-            if not (1 <= grade_num <= 3 and 1 <= class_num <= 10):
-                 continue
-
+    for grade_num, max_class in GRADE_MAX_CLASSROOM.items():
+        for class_num in range(1, max_class + 1):
             grade_str = str(grade_num)
             class_str = str(class_num)
             correct_code = generate_invite_code(grade_str, class_str)
@@ -1399,7 +1415,7 @@ def get_my_classes():
         for grade_num in range(1, 4):
             my_classes.append({"grade": str(grade_num), "classroom": "combined", "display_name": f"{grade_num}학년 통합"})
         for grade_num in range(1, 4):
-            max_class = 10 if grade_num == 2 else 9
+            max_class = GRADE_MAX_CLASSROOM[grade_num]
             for class_num in range(1, max_class + 1):
                 my_classes.append({"grade": str(grade_num), "classroom": str(class_num), "display_name": f"{grade_num}학년 {class_num}반"})
         return jsonify({"success": True, "classes": my_classes})
