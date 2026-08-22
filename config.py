@@ -48,3 +48,17 @@ CACHE_DIR = os.path.join(BASE_DIR, "cache")
 WEATHER_LATITUDE = float(os.getenv("WEATHER_LATITUDE", "36.61065"))
 WEATHER_LONGITUDE = float(os.getenv("WEATHER_LONGITUDE", "127.29946"))
 WEATHER_LOCATION_NAME = os.getenv("WEATHER_LOCATION_NAME", "세종고등학교")
+
+# Supabase Storage (게시글 사진 첨부)
+# 새 Secret key(sb_secret_*) 또는 legacy service_role 키 중 하나를 서버 환경변수에 넣습니다.
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_STORAGE_KEY = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "school-post-images")
+SUPABASE_STORAGE_TIMEOUT = int(os.getenv("SUPABASE_STORAGE_TIMEOUT", "20"))
+POST_IMAGE_MAX_COUNT = 3
+POST_IMAGE_SOURCE_MAX_BYTES = 8 * 1024 * 1024
+POST_IMAGE_MAX_BYTES = 1024 * 1024
+POST_IMAGE_MAX_EDGE = 1600
+
+# 게시글 3장(각 원본 최대 8MB) 업로드를 허용하되 그 이상 요청은 Flask 단계에서 차단합니다.
+MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(26 * 1024 * 1024)))

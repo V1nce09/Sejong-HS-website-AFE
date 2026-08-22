@@ -85,11 +85,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (alert) { alert.hidden = !alerts.length; alert.innerHTML = alerts.length ? `<strong>시간표 변경 ${alerts.length}건</strong>${alerts.map(a=>`<span>${a.day_name} ${a.period}교시: ${esc(a.from)} → <b>${esc(a.to)}</b></span>`).join('')}` : ''; }
     if(host) host.innerHTML = timetableMarkup(data);
     const todayObj = (data.days||[]).find(d => d.date === today);
-    if(home) home.innerHTML = todayObj ? `<div class="today-periods">${todayObj.cells.filter(c=>c.active).map(c=>`<div class="today-period ${c.changed?'changed':''}"><span>${c.period}</span><strong>${esc(c.subject)}</strong></div>`).join('')}</div>` : '<p class="muted">오늘 수업이 없습니다.</p>';
+    if(home) home.innerHTML = todayObj ? `<div class="today-periods">${todayObj.cells.filter(c=>c.active).map(c=>`<div class="today-period ${c.changed?'changed':''}"><span>${c.period}</span><div class="today-subject"><strong>${esc(c.subject)}</strong>${c.elective_room?`<small class="elective-room">${esc(c.elective_room)}</small>`:''}</div></div>`).join('')}</div>` : '<p class="muted">오늘 수업이 없습니다.</p>';
   }
   function timetableMarkup(data) {
     const days = data.days || [];
-    return `<div class="timetable-scroll"><table class="portal-timetable"><thead><tr><th>교시</th>${days.map(d=>`<th>${d.day_name}<small>${formatDate(d.date)}</small></th>`).join('')}</tr></thead><tbody>${Array.from({length:7},(_,i)=>i+1).map(period=>`<tr><th>${period}</th>${days.map(d=>{const c=d.cells.find(x=>x.period===period)||{}; if(!c.active)return '<td class="inactive">—</td>'; return `<td class="${c.changed?'changed':''} ${c.elective?'elective':''}">${c.changed?`<span class="change-tag">${c.change_type==='removed'?'없어짐':'변경'}</span>`:''}<strong>${esc(c.subject)}</strong></td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;
+    return `<div class="timetable-scroll"><table class="portal-timetable"><thead><tr><th>교시</th>${days.map(d=>`<th>${d.day_name}<small>${formatDate(d.date)}</small></th>`).join('')}</tr></thead><tbody>${Array.from({length:7},(_,i)=>i+1).map(period=>`<tr><th>${period}</th>${days.map(d=>{const c=d.cells.find(x=>x.period===period)||{}; if(!c.active)return '<td class="inactive">—</td>'; return `<td class="${c.changed?'changed':''} ${c.elective?'elective':''}">${c.changed?`<span class="change-tag">${c.change_type==='removed'?'없어짐':'변경'}</span>`:''}<strong>${esc(c.subject)}</strong>${c.elective_room?`<small class="elective-room">${esc(c.elective_room)}</small>`:''}</td>`;}).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
 
   async function loadProfile() {
@@ -101,10 +101,22 @@ document.addEventListener('DOMContentLoaded', () => {
   $('profile-edit-cancel')?.addEventListener('click',()=>{$('profile-edit-form').hidden=true;$('profile-edit-toggle').hidden=false;});
   $('profile-edit-form')?.addEventListener('submit',async e=>{e.preventDefault(); const msg=$('profile-edit-message'); try{const d=await api('/api/user_profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('profile-name-input').value})});msg.textContent=d.message;msg.className='form-message success';await loadProfile();setTimeout(()=>location.reload(),500);}catch(err){msg.textContent=err.message;msg.className='form-message error';}});
 
+  $('password-edit-toggle')?.addEventListener('click',()=>{$('password-change-form').hidden=false;$('password-edit-toggle').hidden=true;});
+  $('password-change-cancel')?.addEventListener('click',()=>{const form=$('password-change-form');form.reset();form.hidden=true;$('password-edit-toggle').hidden=false;$('password-change-message').textContent='';});
+  $('password-change-form')?.addEventListener('submit',async e=>{
+    e.preventDefault();
+    const msg=$('password-change-message');
+    try{
+      const d=await api('/api/change_password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:$('current-password').value,new_password:$('new-password').value,new_password2:$('new-password2').value})});
+      msg.textContent=d.message;msg.className='form-message success';e.target.reset();
+      setTimeout(()=>{e.target.hidden=true;$('password-edit-toggle').hidden=false;msg.textContent='';},800);
+    }catch(err){msg.textContent=err.message;msg.className='form-message error';}
+  });
+
   async function loadBoards() {
     const host=$('boards-list');
     if(!authenticated){host.innerHTML='<div class="empty-panel">로그인 후 가입된 게시판을 확인할 수 있습니다.</div>';return;}
-    try{const d=await api('/api/my_classes'); const list=d.classes||[]; host.innerHTML=list.length?list.map(c=>`<a class="board-card" href="/class/${encodeURIComponent(c.grade)}/${encodeURIComponent(c.classroom)}"><span class="board-icon">#</span><div><strong>${esc(c.display_name||`${c.grade}학년 ${c.classroom}반`)}</strong><small>게시판 열기</small></div></a>`).join(''):'<div class="empty-panel">가입된 게시판이 없습니다.</div>';}
+    try{const d=await api('/api/my_classes'); const list=d.classes||[]; host.innerHTML=list.length?list.map(c=>`<a class="board-card" href="/class/${encodeURIComponent(c.grade)}/${encodeURIComponent(c.classroom)}"><span class="board-icon">#</span><div><strong>${esc(c.display_name||`${c.grade}학년 ${c.classroom}반`)}</strong><small>${Number(c.unread_count||0)>0?`읽지 않음 ${Number(c.unread_count)}`:'게시판 열기'}</small></div>${Number(c.unread_count||0)>0?`<span class="board-unread-count">${Number(c.unread_count)}</span>`:''}</a>`).join(''):'<div class="empty-panel">가입된 게시판이 없습니다.</div>';}
     catch(e){host.innerHTML=`<div class="empty-panel">${esc(e.message)}</div>`;}
   }
   $('open-add-board')?.addEventListener('click',()=>{if(!authenticated){location.href='/login';return;}$('add-board-overlay').hidden=false;});
@@ -121,13 +133,26 @@ document.addEventListener('DOMContentLoaded', () => {
   $('site-info-cancel')?.addEventListener('click',()=>{$('site-info-form').hidden=true;$('site-info-view').hidden=false;});
   $('site-info-form')?.addEventListener('submit',async e=>{e.preventDefault();const msg=$('site-info-message');try{const d=await api('/api/site_info',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purpose:$('site-purpose-input').value,team:$('site-team-input').value})});msg.textContent=d.message;msg.className='form-message success';await loadSiteInfo();setTimeout(()=>{$('site-info-form').hidden=true;$('site-info-view').hidden=false;},400);}catch(err){msg.textContent=err.message;msg.className='form-message error';}});
 
+  async function loadAuditLogs() {
+    const host=$('admin-audit-logs');
+    if(!host||!isAdmin)return;
+    host.innerHTML='<div class="loading-block">불러오는 중...</div>';
+    try{
+      const d=await api('/api/admin/audit_logs?limit=50');
+      const logs=d.logs||[];
+      host.innerHTML=logs.length?logs.map(log=>{const stamp=String(log.created_at||'').replace('T',' ').slice(0,16);return `<div class="admin-audit-item"><div><strong>${esc(log.action)}</strong><span>${esc(log.actor_userid||'관리자')} · ${esc(log.details||'')}</span></div><time>${esc(stamp)}</time></div>`;}).join(''):'<div class="admin-empty-state">기록이 없습니다.</div>';
+    }catch(err){host.innerHTML=`<div class="admin-empty-state">${esc(err.message)}</div>`;}
+  }
+
   function loadAdminPanel() {
     const host = $('admin-user-search-results');
     if (host && !host.dataset.ready) {
       host.innerHTML = '<div class="admin-empty-state">이름을 입력해 계정을 조회하세요.</div>';
       host.dataset.ready = '1';
     }
+    loadAuditLogs();
   }
+  $('admin-audit-refresh')?.addEventListener('click',loadAuditLogs);
 
   $('admin-user-search-form')?.addEventListener('submit', async e => {
     e.preventDefault();
@@ -147,8 +172,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const posts = (u.posts || []).length
           ? `<div class="admin-user-posts">${u.posts.map(p => `<a href="${esc(p.url)}"><strong>${esc(p.title)}</strong><span>${esc(p.board_name)} · ${esc(String(p.created_at || '').slice(0,10))}</span></a>`).join('')}</div>`
           : '<div class="admin-user-no-posts">작성한 글이 없습니다.</div>';
-        return `<article class="admin-user-result"><div class="admin-user-head"><div><strong>${esc(u.name)}</strong><span>${esc(u.student_no || '학번 미등록')}</span></div><span class="admin-role-badge ${u.is_teacher?'teacher':''}">${role}</span></div>${posts}</article>`;
+        const resetButton=u.is_admin?'':`<button class="secondary-button admin-reset-password" type="button" data-user-id="${Number(u.id)}">임시 비밀번호 발급</button>`;
+        return `<article class="admin-user-result" data-user-id="${Number(u.id)}"><div class="admin-user-head"><div><strong>${esc(u.name)}</strong><span>${esc(u.student_no || '학번 미등록')}</span></div><span class="admin-role-badge ${u.is_teacher?'teacher':''}">${role}</span></div>${resetButton}<div class="admin-temp-password" hidden></div>${posts}</article>`;
       }).join('');
+      host.querySelectorAll('.admin-reset-password').forEach(button=>button.addEventListener('click',async()=>{
+        if(!confirm('이 계정의 기존 비밀번호를 사용할 수 없게 하고 임시 비밀번호를 발급할까요?'))return;
+        button.disabled=true;
+        const article=button.closest('.admin-user-result'),box=article?.querySelector('.admin-temp-password');
+        try{
+          const d=await api(`/api/admin/users/${button.dataset.userId}/reset_password`,{method:'POST'});
+          if(box){box.hidden=false;box.innerHTML=`<span>임시 비밀번호</span><code>${esc(d.temporary_password)}</code><button type="button" class="text-button copy-temp-password">복사</button>`;box.querySelector('.copy-temp-password')?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(d.temporary_password);}catch(_){}});}
+          loadAuditLogs();
+        }catch(err){alert(err.message);}finally{button.disabled=false;}
+      }));
     } catch (err) {
       host.innerHTML = `<div class="admin-empty-state">${esc(err.message)}</div>`;
     }
@@ -168,6 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
       msg.className = 'form-message success';
       const searchName = $('admin-user-search-name')?.value.trim();
       if (searchName) $('admin-user-search-form')?.requestSubmit();
+      loadAuditLogs();
     } catch (err) {
       msg.textContent = err.message;
       msg.className = 'form-message error';
@@ -184,7 +221,9 @@ document.addEventListener('DOMContentLoaded', () => {
   $('timetable-settings-save-btn')?.addEventListener('click',async()=>{const grade=Number($('timetable-profile-grade').value),classroom=Number($('timetable-profile-classroom').value),msg=$('timetable-settings-message');try{await api('/api/timetable_profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grade,classroom})});if(grade===2){const cells=[...$('elective-editor').querySelectorAll('select')].map(s=>({day:Number(s.dataset.day),period:Number(s.dataset.period),subject:s.value}));await api('/api/custom_timetable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cells})});}msg.textContent='시간표 설정을 저장했습니다.';msg.className='form-message success';cache.timetable=null;setTimeout(()=>{$('timetable-settings-overlay').hidden=true;loadTimetable();},400);}catch(e){msg.textContent=e.message;msg.className='form-message error';}});
 
   if(isAdmin){const ag=$('admin-base-grade'),ac=$('admin-base-classroom');setClassOptions(ac,1);ag?.addEventListener('change',()=>setClassOptions(ac,ag.value));$('admin-base-timetable-btn')?.addEventListener('click',()=>{$('admin-base-overlay').hidden=false;loadAdminBase();});$('admin-base-load')?.addEventListener('click',loadAdminBase);async function loadAdminBase(){const grade=Number(ag.value),cl=Number(ac.value),host=$('admin-base-editor'),msg=$('admin-base-message');msg.textContent='';try{const d=await api(`/api/admin/base_timetable?grade=${grade}&classroom=${cl}`),saved={};(d.cells||[]).forEach(c=>saved[`${c.day}:${c.period}`]=c.subject);host.innerHTML=`<div class="admin-grid-head"><span>교시</span>${DAYS.map(x=>`<span>${x}</span>`).join('')}</div>${Array.from({length:7},(_,i)=>i+1).map(p=>`<div class="admin-grid-row"><strong>${p}</strong>${DAYS.map((_,day)=>{const active=p<=DAILY_PERIODS[grade][day];if(!active)return '<span class="admin-inactive">—</span>';const elective=grade===2&&ELECTIVE_SLOTS.has(`${day}:${p}`);return `<label class="${elective?'elective':''}"><input data-day="${day}" data-period="${p}" maxlength="40" value="${esc(saved[`${day}:${p}`]||'')}" placeholder="${elective?'선택과목 교시':'과목'}"></label>`;}).join('')}</div>`).join('')}`;}catch(e){host.innerHTML='';msg.textContent=e.message;msg.className='form-message error';}}
-    $('admin-base-save-btn')?.addEventListener('click',async()=>{const cells=[...$('admin-base-editor').querySelectorAll('input')].map(i=>({day:Number(i.dataset.day),period:Number(i.dataset.period),subject:i.value.trim()}));const msg=$('admin-base-message');try{const d=await api('/api/admin/base_timetable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grade:Number(ag.value),classroom:Number(ac.value),cells})});msg.textContent=d.message;msg.className='form-message success';cache.timetable=null;}catch(e){msg.textContent=e.message;msg.className='form-message error';}});}
+    $('admin-base-save-btn')?.addEventListener('click',async()=>{const cells=[...$('admin-base-editor').querySelectorAll('input')].map(i=>({day:Number(i.dataset.day),period:Number(i.dataset.period),subject:i.value.trim()}));const msg=$('admin-base-message');try{const d=await api('/api/admin/base_timetable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grade:Number(ag.value),classroom:Number(ac.value),cells})});msg.textContent=d.message;msg.className='form-message success';cache.timetable=null;loadAuditLogs();}catch(e){msg.textContent=e.message;msg.className='form-message error';}});}
+
+  window.addEventListener('pageshow',e=>{if(e.persisted&&authenticated)loadBoards();});
 
   document.querySelectorAll('[data-close-modal]').forEach(btn=>btn.addEventListener('click',()=>{$(btn.dataset.closeModal).hidden=true;}));
   document.querySelectorAll('.portal-modal-overlay').forEach(overlay=>overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.hidden=true;}));

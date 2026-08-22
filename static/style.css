@@ -4239,3 +4239,295 @@ button, input, select, textarea { max-width: 100%; }
   body:not(.portal-v3) .container > .class-detail-section { order: 3; }
   body:not(.portal-v3) .container > .flash-messages { order: 4; }
 }
+
+/* ==========================================================
+   Operational features: password, unread notices, search, audit log
+   ========================================================== */
+.portal-v3 .profile-security-block {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e6eaf0;
+}
+.portal-v3 .password-change-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.portal-v3 .password-change-form[hidden] { display: none !important; }
+.portal-v3 .password-change-form label {
+  display: grid;
+  gap: 6px;
+  color: #536176;
+  font-size: 12px;
+  font-weight: 700;
+}
+.portal-v3 .password-change-form .form-actions,
+.portal-v3 .password-change-form .form-message { grid-column: 1 / -1; }
+
+.board-search-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 20px 14px;
+}
+.board-search-form input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid #d5dce7;
+  border-radius: 8px;
+  background: #fff;
+  color: #202632;
+  outline: none;
+}
+.board-search-form input[type="search"]:focus {
+  border-color: #8fa6cb;
+  box-shadow: 0 0 0 3px rgba(59,103,178,.08);
+}
+.board-search-clear {
+  color: #68768b;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.unread-badge,
+.board-unread-count,
+.sidebar-unread-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #dff2ff;
+  color: #17638f;
+  font-weight: 800;
+}
+.unread-badge {
+  min-height: 20px;
+  margin-right: 6px;
+  padding: 2px 7px;
+  font-size: 10px;
+  vertical-align: 1px;
+}
+.portal-v3 .board-card { position: relative; }
+.portal-v3 .board-unread-count {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  margin-left: auto;
+  font-size: 11px;
+}
+body:not(.portal-v3) #my-classes-list a {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sidebar-unread-count {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.portal-v3 .admin-user-result .admin-reset-password {
+  margin: 10px 0 2px;
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+.portal-v3 .admin-temp-password {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid #cfe1f3;
+  border-radius: 8px;
+  background: #f4faff;
+  color: #315372;
+  font-size: 12px;
+}
+.portal-v3 .admin-temp-password[hidden] { display: none !important; }
+.portal-v3 .admin-temp-password code {
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #fff;
+  border: 1px solid #d9e5ef;
+  color: #18283b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  user-select: all;
+}
+.portal-v3 .admin-audit-card { margin-top: 18px; }
+.portal-v3 .admin-audit-logs { display: grid; }
+.portal-v3 .admin-audit-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  padding: 12px 2px;
+  border-top: 1px solid #edf0f4;
+}
+.portal-v3 .admin-audit-item:first-child { border-top: 0; }
+.portal-v3 .admin-audit-item strong,
+.portal-v3 .admin-audit-item span { display: block; }
+.portal-v3 .admin-audit-item strong { font-size: 13px; color: #263246; }
+.portal-v3 .admin-audit-item span { margin-top: 3px; color: #68758a; font-size: 11px; line-height: 1.5; }
+.portal-v3 .admin-audit-item time { color: #8994a5; font-size: 10px; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  .portal-v3 .password-change-form { grid-template-columns: 1fr; }
+  .portal-v3 .password-change-form .form-actions,
+  .portal-v3 .password-change-form .form-message { grid-column: auto; }
+  .portal-v3 .admin-audit-item { grid-template-columns: 1fr; gap: 4px; }
+  .portal-v3 .admin-audit-item time { white-space: normal; }
+}
+
+@media (max-width: 900px) {
+  body:not(.portal-v3) .board-search-form {
+    padding: 0 0 12px;
+    gap: 6px;
+  }
+  body:not(.portal-v3) .board-search-form input[type="search"] {
+    height: 36px;
+    font-size: 12px;
+  }
+  body:not(.portal-v3) .board-search-form .secondary-button {
+    min-height: 36px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  body:not(.portal-v3) .board-search-clear { font-size: 11px; }
+}
+
+/* ==========================================================
+   Post image attachments + elective classroom labels
+   ========================================================== */
+.post-image-field {
+  margin-bottom: 18px;
+  padding-top: 2px;
+}
+.post-image-field > label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #273247;
+}
+.post-image-field input[type="file"] {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d5dce7;
+  border-radius: 10px;
+  background: #fff;
+  box-sizing: border-box;
+}
+.post-image-field > small {
+  display: block;
+  margin-top: 7px;
+  color: #758196;
+  font-size: 12px;
+}
+.existing-image-grid,
+.post-image-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.existing-image-grid {
+  margin: 8px 0 12px;
+}
+.existing-image-item {
+  display: block !important;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #dfe4ec;
+  border-radius: 10px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+.existing-image-item img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 7px;
+  background: #eef1f5;
+}
+.existing-image-item span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  color: #4d586b;
+  font-size: 12px;
+}
+.existing-image-item input[type="checkbox"] {
+  width: auto !important;
+  margin: 0;
+}
+.post-image-gallery {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #e8ecf2;
+}
+.post-image-link {
+  display: block;
+  min-width: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #eef1f5;
+}
+.post-image-link img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  transition: transform .15s ease;
+}
+.post-image-link:hover img {
+  transform: scale(1.015);
+}
+.portal-v3 .today-subject {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.portal-v3 .elective-room {
+  display: inline-block;
+  margin-left: 6px;
+  color: #61718b;
+  font-size: 10px;
+  line-height: 1.35;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.portal-v3 .today-subject .elective-room {
+  margin-left: 0;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .existing-image-grid,
+  .post-image-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .post-image-gallery {
+    margin-top: 20px;
+  }
+  .portal-v3 .elective-room {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 420px) {
+  .existing-image-grid,
+  .post-image-gallery {
+    grid-template-columns: 1fr;
+  }
+}

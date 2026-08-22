@@ -24,3 +24,23 @@
 - `WEATHER_LATITUDE` (기본 36.61065)
 - `WEATHER_LONGITUDE` (기본 127.29946)
 - `WEATHER_LOCATION_NAME` (기본 세종고등학교)
+
+## 게시글 사진 첨부 (Supabase Storage)
+
+사진은 PythonAnywhere 로컬 디스크가 아니라 Supabase Storage에 저장하고, SQLite에는 Storage 경로와 공개 URL만 저장합니다.
+
+Supabase Dashboard에서 다음처럼 설정합니다.
+
+1. Storage에 `school-post-images` 버킷을 생성하고 **Public bucket**으로 설정합니다.
+2. 버킷 제한은 가능하면 `image/webp`, 최대 파일 크기 `1 MB`로 설정합니다. 서버가 JPG/PNG/WebP 원본을 받아 긴 변 1600px 이하의 WebP로 변환한 뒤 업로드합니다.
+3. 서버 환경변수에 아래 값을 추가합니다. 새 Supabase 프로젝트라면 `SUPABASE_SECRET_KEY` 사용을 권장하고, 기존 legacy 키를 쓰는 경우 `SUPABASE_SERVICE_ROLE_KEY`도 지원합니다.
+
+```text
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_...
+SUPABASE_STORAGE_BUCKET=school-post-images
+```
+
+`SUPABASE_SECRET_KEY`/`SUPABASE_SERVICE_ROLE_KEY`는 절대 브라우저 코드나 GitHub에 넣지 마세요.
+
+게시글당 최대 3장, 원본 한 장당 최대 8MB를 받고, 저장 전 EXIF를 제거하고 긴 변 1600px 이하/최종 1MB 이하 WebP로 압축합니다. 게시글 수정에서 사진을 제거하거나 게시글을 삭제하면 연결된 Storage 객체도 정리합니다.

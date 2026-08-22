@@ -110,6 +110,39 @@ def init_db():
         updated_at TEXT NOT NULL
     )
     """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS post_images (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER NOT NULL,
+        storage_path TEXT NOT NULL UNIQUE,
+        public_url TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS post_reads (
+        user_id INTEGER NOT NULL,
+        post_id INTEGER NOT NULL,
+        read_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, post_id),
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor_id INTEGER,
+        actor_userid TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_type TEXT NOT NULL DEFAULT '',
+        target_id TEXT,
+        details TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """)
     cur.execute("INSERT OR IGNORE INTO site_info (info_key, content, updated_at) VALUES (?, ?, ?)",
                 ("purpose", "", datetime.now().isoformat()))
     cur.execute("INSERT OR IGNORE INTO site_info (info_key, content, updated_at) VALUES (?, ?, ?)",
@@ -127,6 +160,10 @@ def init_db():
 
     cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_grade_classroom ON posts (grade, classroom)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts (author_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_post_images_post ON post_images (post_id, sort_order)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_post_reads_user ON post_reads (user_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_post_reads_post ON post_reads (post_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_custom_timetable_user ON custom_timetable (user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_base_timetable_class ON class_base_timetable (grade, classroom)")
     # 관리자 ID/비밀번호는 배포 환경변수를 단일 기준으로 사용합니다.

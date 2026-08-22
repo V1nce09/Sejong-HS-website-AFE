@@ -83,11 +83,21 @@
                 <span>작성자: {{ post.author_name }}{% if post.author_is_teacher %} · 선생님{% endif %}</span>
                 <span>|</span>
                 <span>작성일: {{ post.created_at.split('T')[0] }}</span>
+                {% if post.updated_at and post.updated_at != post.created_at %}<span>|</span><span>수정일: {{ post.updated_at.split('T')[0] }}</span>{% endif %}
             </div>
             <hr class="post-divider">
             <div class="post-content">
                 {{ formatted_content | safe }}
             </div>
+            {% if attached_images %}
+            <div class="post-image-gallery" aria-label="첨부 사진">
+              {% for image in attached_images %}
+              <a href="{{ image.public_url }}" target="_blank" rel="noopener" class="post-image-link">
+                <img src="{{ image.public_url }}" alt="첨부 사진 {{ loop.index }}" loading="lazy">
+              </a>
+              {% endfor %}
+            </div>
+            {% endif %}
         </div>
       </div>
     </main>

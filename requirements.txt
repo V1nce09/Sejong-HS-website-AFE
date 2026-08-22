@@ -3,3 +3,5 @@ werkzeug
 bleach
 cryptography
 requests
+
+Pillow

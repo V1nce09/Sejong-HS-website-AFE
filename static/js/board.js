@@ -23,7 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       host.innerHTML = classes.map(c => {
         const href = `/class/${encodeURIComponent(c.grade)}/${encodeURIComponent(c.classroom)}`;
-        return `<li><a href="${href}">${esc(c.display_name || '')}</a></li>`;
+        const unread = Number(c.unread_count || 0);
+        return `<li><a href="${href}"><span>${esc(c.display_name || '')}</span>${unread > 0 ? `<b class="sidebar-unread-count">${unread}</b>` : ''}</a></li>`;
       }).join('');
     } catch (_) {
       host.innerHTML = '<li class="board-empty-class">클래스를 불러오지 못했습니다.</li>';
@@ -132,6 +133,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
+
+  window.addEventListener('pageshow', e => { if (e.persisted) location.reload(); });
 
   loadMyClasses();
 });

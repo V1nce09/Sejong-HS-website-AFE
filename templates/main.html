@@ -77,6 +77,18 @@
             <div class="form-actions"><button type="button" id="profile-edit-cancel" class="secondary-button">취소</button><button class="primary-button" type="submit">저장</button></div>
             <p id="profile-edit-message" class="form-message"></p>
           </form>
+          {% if session.get('user') != config['ADMIN_ID'] %}
+          <div class="profile-security-block">
+            <button type="button" id="password-edit-toggle" class="secondary-button">비밀번호 변경</button>
+            <form id="password-change-form" class="password-change-form" hidden>
+              <label>현재 비밀번호<input id="current-password" type="password" autocomplete="current-password" required></label>
+              <label>새 비밀번호<input id="new-password" type="password" autocomplete="new-password" minlength="8" required></label>
+              <label>새 비밀번호 확인<input id="new-password2" type="password" autocomplete="new-password" minlength="8" required></label>
+              <div class="form-actions"><button type="button" id="password-change-cancel" class="secondary-button">취소</button><button class="primary-button" type="submit">변경</button></div>
+              <p id="password-change-message" class="form-message"></p>
+            </form>
+          </div>
+          {% endif %}
         </div>
       </section>
 
@@ -139,6 +151,10 @@
             <p id="admin-teacher-message" class="form-message"></p>
           </article>
         </div>
+        <article class="content-card admin-audit-card">
+          <div class="subsection-heading"><h2>관리자 작업 기록</h2><button id="admin-audit-refresh" class="text-button" type="button">새로고침</button></div>
+          <div id="admin-audit-logs" class="admin-audit-logs"><div class="loading-block">불러오는 중...</div></div>
+        </article>
       </section>
       {% endif %}
     </main>

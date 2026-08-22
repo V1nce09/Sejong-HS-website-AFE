@@ -81,13 +81,19 @@
       </div>
       <hr class="class-title-divider" style="border: none; border-top: 2px solid black; margin: 10px 0 20px 20px; width: 80vw;">
 
+      <form class="board-search-form" method="get">
+        <input type="search" name="q" value="{{ search_query }}" maxlength="100" placeholder="제목, 내용, 작성자 검색" aria-label="게시글 검색">
+        <button class="secondary-button" type="submit">검색</button>
+        {% if search_query %}<a class="board-search-clear" href="{{ url_for('class_detail', grade=grade, classroom=classroom) }}">초기화</a>{% endif %}
+      </form>
+
       <div class="post-list" style="padding-left: 20px; padding-right: 20px;">
         {% if posts %}
           <ul style="list-style: none; padding: 0;">
             {% for post in posts %}
               <li class="board-post-row{% if post.author_is_teacher %} teacher-post{% endif %}{% if post.is_pinned %} pinned-post{% endif %}">
                 <div class="board-post-main">
-                  <a href="/class/{{ grade }}/{{ classroom }}/post/{{ post.id }}" class="board-post-title">{% if post.is_pinned %}<span class="pin-badge">고정</span>{% endif %}{{ post.title }}</a>
+                  <a href="/class/{{ grade }}/{{ classroom }}/post/{{ post.id }}" class="board-post-title">{% if post.is_pinned %}<span class="pin-badge">고정</span>{% endif %}{% if is_notice and not post.is_read %}<span class="unread-badge">새 글</span>{% endif %}{{ post.title }}</a>
                   <span class="board-post-meta">작성자: {{ post.author_name }}{% if post.author_is_teacher %} · 선생님{% endif %} | {{ post.created_at.split('T')[0] }}</span>
                 </div>
                 {% if can_pin %}<button class="pin-post-btn" type="button" data-post-id="{{ post.id }}">{% if post.is_pinned %}고정 해제{% else %}고정{% endif %}</button>{% endif %}
@@ -95,7 +101,7 @@
             {% endfor %}
           </ul>
         {% else %}
-          <p class="no-posts-message">아직 작성된 게시글이 없습니다.</p>
+          <p class="no-posts-message">{% if search_query %}검색 결과가 없습니다.{% else %}아직 작성된 게시글이 없습니다.{% endif %}</p>
         {% endif %}
       </div>
 

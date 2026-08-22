@@ -69,14 +69,30 @@
       </div>
       <hr class="class-title-divider" style="border: none; border-top: 2px solid black; margin: 10px 0 20px 0; width: 80vw;">
 
-      <form id="write-form" method="POST" style="padding-left: 40px; padding-right: 20px;">
+      <form id="write-form" method="POST" enctype="multipart/form-data" style="padding-left: 40px; padding-right: 20px;">
         <div style="margin-bottom: 15px;">
           <label for="title" style="display: block; margin-bottom: 5px; font-weight: bold;">제목</label>
-          <input type="text" id="title" name="title" value="{{ post.title if post else '' }}" required>
+          <input type="text" id="title" name="title" maxlength="200" value="{{ post.title if post else '' }}" required>
         </div>
         <div style="margin-bottom: 15px;">
           <label for="content" style="display: block; margin-bottom: 5px; font-weight: bold;">내용</label>
-          <textarea id="content" name="content" rows="10" required>{{ post.content if post else '' }}</textarea>
+          <textarea id="content" name="content" rows="10" maxlength="20000" required>{{ post.content if post else '' }}</textarea>
+        </div>
+        <div class="post-image-field">
+          <label for="post-images">사진</label>
+          {% if existing_images %}
+          <div class="existing-image-grid">
+            {% for image in existing_images %}
+            <label class="existing-image-item">
+              <img src="{{ image.public_url }}" alt="첨부 사진 {{ loop.index }}" loading="lazy">
+              <span><input type="checkbox" name="remove_images" value="{{ image.id }}"> 삭제</span>
+            </label>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <input id="post-images" type="file" name="images" accept="image/jpeg,image/png,image/webp" multiple>
+          <small>최대 3장 · 장당 8MB 이하 · JPG/PNG/WebP</small>
+          <p id="post-image-message" class="form-message"></p>
         </div>
         <div style="text-align: right;">
           <button id="submit-post-btn" class="primary-button" type="submit">{% if edit_mode %}수정 완료{% else %}작성 완료{% endif %}</button>
@@ -89,7 +105,38 @@
 
 <script src="{{ url_for('static', filename='js/board.js') }}?v={{ cache_buster }}" defer></script>
 <script>
-    document.getElementById('write-form').addEventListener('submit', function() {
+    const writeForm = document.getElementById('write-form');
+    const imageInput = document.getElementById('post-images');
+    const imageMessage = document.getElementById('post-image-message');
+    const maxImages = 3;
+    const sourceMaxBytes = 8 * 1024 * 1024;
+
+    function validatePostImages() {
+        const removeCount = document.querySelectorAll('input[name="remove_images"]:checked').length;
+        const existingCount = document.querySelectorAll('.existing-image-item').length - removeCount;
+        const files = Array.from(imageInput?.files || []);
+        if (existingCount + files.length > maxImages) {
+            imageMessage.textContent = '사진은 게시글당 최대 3장까지 첨부할 수 있습니다.';
+            imageMessage.className = 'form-message error';
+            return false;
+        }
+        if (files.some(file => file.size > sourceMaxBytes)) {
+            imageMessage.textContent = '원본 이미지는 한 장당 8MB 이하만 첨부할 수 있습니다.';
+            imageMessage.className = 'form-message error';
+            return false;
+        }
+        imageMessage.textContent = files.length ? `${files.length}장 선택됨` : '';
+        imageMessage.className = 'form-message';
+        return true;
+    }
+
+    imageInput?.addEventListener('change', validatePostImages);
+    document.querySelectorAll('input[name="remove_images"]').forEach(el => el.addEventListener('change', validatePostImages));
+    writeForm.addEventListener('submit', function(event) {
+        if (!validatePostImages()) {
+            event.preventDefault();
+            return;
+        }
         const submitButton = document.getElementById('submit-post-btn');
         submitButton.disabled = true;
         submitButton.textContent = {{ "'수정 중...'" if edit_mode else "'작성 중...'" }};

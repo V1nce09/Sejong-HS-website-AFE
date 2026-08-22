@@ -5,6 +5,8 @@ import os
 import time # time 모듈 추가
 import hashlib
 import re
+import secrets
+import string
 import bleach
 
 import config
@@ -12,6 +14,7 @@ import database
 import neis
 import weather
 import crypto_utils
+import post_images
 
 app = Flask(__name__)
 app.config.from_object(config) # config.py에서 설정 로드
@@ -22,6 +25,10 @@ if not os.path.exists(config.CACHE_DIR):
 
 # 데이터베이스 초기화 및 teardown 등록
 database.init_app(app)
+
+@app.errorhandler(413)
+def request_too_large(_error):
+    return "첨부 파일 용량이 너무 큽니다. 사진은 최대 3장, 원본 한 장당 8MB 이하로 첨부해주세요.", 413
 
 @app.before_request
 def load_logged_in_user_and_session():
@@ -67,6 +74,59 @@ def _is_teacher(user):
 
 def _is_staff(user):
     return _is_admin(user) or _is_teacher(user)
+
+
+def _audit_admin_action(db, action, target_type="", target_id=None, details=""):
+    """관리자 계정이 수행한 주요 변경 작업만 감사 로그에 남깁니다."""
+    if not _is_admin(g.user):
+        return
+    db.execute(
+        "INSERT INTO audit_logs (actor_id, actor_userid, action, target_type, target_id, details, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            g.user["id"],
+            g.user["userid"],
+            str(action),
+            str(target_type or ""),
+            None if target_id is None else str(target_id),
+            str(details or ""),
+            datetime.now().isoformat(),
+        ),
+    )
+
+
+def _generate_temporary_password(length=12):
+    """대문자/소문자/숫자/특수문자를 모두 포함하는 일회성 전달용 비밀번호를 생성합니다."""
+    length = max(10, int(length))
+    required = [
+        secrets.choice(string.ascii_uppercase),
+        secrets.choice(string.ascii_lowercase),
+        secrets.choice(string.digits),
+        secrets.choice("!@#$%"),
+    ]
+    alphabet = string.ascii_letters + string.digits + "!@#$%"
+    chars = required + [secrets.choice(alphabet) for _ in range(length - len(required))]
+    secrets.SystemRandom().shuffle(chars)
+    return "".join(chars)
+
+
+def _notice_unread_count(db, user_id, grade):
+    row = db.execute(
+        "SELECT COUNT(*) AS cnt FROM posts p "
+        "WHERE p.grade = ? AND p.classroom = -1 AND p.author_id != ? "
+        "AND NOT EXISTS (SELECT 1 FROM post_reads r WHERE r.user_id = ? AND r.post_id = p.id)",
+        (int(grade), int(user_id), int(user_id)),
+    ).fetchone()
+    return int(row["cnt"] if row else 0)
+
+
+def _attach_notice_unread_counts(db, user_id, classes):
+    for item in classes:
+        if str(item.get("classroom")) == "notice" and str(item.get("grade", "")).isdigit():
+            item["unread_count"] = _notice_unread_count(db, user_id, int(item["grade"]))
+        else:
+            item["unread_count"] = 0
+    return classes
 
 
 def _decrypt_student_no(token):
@@ -127,6 +187,51 @@ def _can_access_stored_board(db, user, grade, classroom):
         f"{grade}-{classroom}" in session.get("unlocked_classes", [])
         or _has_class_membership(db, user["id"], grade, classroom)
     )
+
+
+def _get_post_images(db, post_id):
+    return db.execute(
+        "SELECT id, post_id, storage_path, public_url, sort_order, created_at "
+        "FROM post_images WHERE post_id = ? ORDER BY sort_order, id",
+        (int(post_id),),
+    ).fetchall()
+
+
+def _request_image_files():
+    return [f for f in request.files.getlist("images") if f and getattr(f, "filename", "")]
+
+
+def _cleanup_storage_paths(paths):
+    """DB 작업 이후 Storage 객체를 best-effort로 정리합니다."""
+    if not paths:
+        return
+    try:
+        post_images.delete(list(paths))
+    except Exception as exc:
+        # DB에는 더 이상 연결되지 않은 객체이므로 사용자 요청을 실패시키지 않고 서버 로그로 남깁니다.
+        print(f"Supabase Storage 정리 오류: {exc}")
+
+
+def _normalize_subject_name(subject):
+    return re.sub(r"\s+", " ", str(subject or "").strip())
+
+
+def _load_grade2_elective_room_map(db):
+    """2학년 기준표의 선택교시 과목 -> 진행 반 목록을 한 번에 만듭니다."""
+    rows = db.execute(
+        "SELECT classroom, day_of_week, period, subject FROM class_base_timetable "
+        "WHERE grade = 2 AND subject != '' ORDER BY classroom"
+    ).fetchall()
+    room_map = {}
+    for row in rows:
+        key = (int(row["day_of_week"]), int(row["period"]))
+        if key not in GRADE2_ELECTIVE_SLOTS:
+            continue
+        subject = _normalize_subject_name(row["subject"])
+        if not subject:
+            continue
+        room_map.setdefault((key[0], key[1], subject), []).append(int(row["classroom"]))
+    return room_map
 
 
 # --- 개인 시간표 설정 ---
@@ -417,14 +522,23 @@ def class_detail(grade, classroom):
         can_write = bool(g.user)
         post_grade, post_classroom = grade_num, class_num
 
-    posts = db.execute(
-        "SELECT p.id, p.title, p.created_at, p.is_pinned, u.name AS author_name, "
-        "COALESCE(u.is_teacher, 0) AS author_is_teacher "
+    search_query = request.args.get("q", "").strip()[:100]
+    user_id_for_read = int(g.user["id"]) if g.user is not None else -1
+    sql = (
+        "SELECT p.id, p.title, p.created_at, p.is_pinned, p.author_id, u.name AS author_name, "
+        "COALESCE(u.is_teacher, 0) AS author_is_teacher, "
+        "CASE WHEN p.author_id = ? OR r.post_id IS NOT NULL THEN 1 ELSE 0 END AS is_read "
         "FROM posts p JOIN users u ON p.author_id = u.id "
+        "LEFT JOIN post_reads r ON r.post_id = p.id AND r.user_id = ? "
         "WHERE p.grade = ? AND p.classroom = ? "
-        "ORDER BY p.is_pinned DESC, p.created_at DESC",
-        (post_grade, post_classroom),
-    ).fetchall()
+    )
+    params = [user_id_for_read, user_id_for_read, post_grade, post_classroom]
+    if search_query:
+        pattern = f"%{search_query}%"
+        sql += "AND (p.title LIKE ? OR p.content LIKE ? OR u.name LIKE ?) "
+        params.extend([pattern, pattern, pattern])
+    sql += "ORDER BY p.is_pinned DESC, p.created_at DESC"
+    posts = db.execute(sql, params).fetchall()
 
     if is_admin and classroom not in {"combined", "notice"} and grade != "admin":
         correct_code = generate_invite_code(grade, classroom)
@@ -438,6 +552,8 @@ def class_detail(grade, classroom):
         can_write=can_write,
         can_pin=is_staff,
         is_teacher=is_teacher,
+        is_notice=(classroom == "notice"),
+        search_query=search_query,
         cache_buster=int(time.time()),
     )
 
@@ -496,18 +612,54 @@ def write_post(grade, classroom):
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         content = request.form.get("content", "").strip()
+        image_files = _request_image_files()
         if not title or not content:
             flash("제목과 내용을 모두 입력해주세요.", "error")
-            return render_template("write.html", grade=grade, classroom=classroom, edit_mode=False, post=None, cache_buster=int(time.time()))
+            return render_template("write.html", grade=grade, classroom=classroom, edit_mode=False, post=None, existing_images=[], cache_buster=int(time.time()))
+        if len(title) > 200 or len(content) > 20000:
+            flash("제목은 200자, 내용은 20000자 이하로 작성해주세요.", "error")
+            return render_template("write.html", grade=grade, classroom=classroom, edit_mode=False, post=None, existing_images=[], cache_buster=int(time.time()))
+        if len(image_files) > config.POST_IMAGE_MAX_COUNT:
+            flash(f"사진은 게시글당 최대 {config.POST_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.", "error")
+            return render_template("write.html", grade=grade, classroom=classroom, edit_mode=False, post=None, existing_images=[], cache_buster=int(time.time()))
 
         now = datetime.now().isoformat()
         db = database.get_db()
-        db.execute(
-            "INSERT INTO posts (grade, classroom, title, content, author_id, is_pinned, updated_at, created_at) "
-            "VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
-            (post_grade, post_classroom, title, content, g.user["id"], now, now),
-        )
-        db.commit()
+        uploaded_paths = []
+        try:
+            cur = db.execute(
+                "INSERT INTO posts (grade, classroom, title, content, author_id, is_pinned, updated_at, created_at) "
+                "VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+                (post_grade, post_classroom, title, content, g.user["id"], now, now),
+            )
+            post_id = int(cur.lastrowid)
+            for sort_order, image_file in enumerate(image_files):
+                storage_path, image_url = post_images.upload(post_id, image_file)
+                uploaded_paths.append(storage_path)
+                db.execute(
+                    "INSERT INTO post_images (post_id, storage_path, public_url, sort_order, created_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (post_id, storage_path, image_url, sort_order, now),
+                )
+            # 학년 공지는 작성자 본인에게는 처음부터 읽은 글로 처리합니다.
+            if post_classroom == -1:
+                db.execute(
+                    "INSERT INTO post_reads (user_id, post_id, read_at) VALUES (?, ?, ?) "
+                    "ON CONFLICT(user_id, post_id) DO UPDATE SET read_at = excluded.read_at",
+                    (g.user["id"], post_id, now),
+                )
+            db.commit()
+        except post_images.PostImageError as exc:
+            db.rollback()
+            _cleanup_storage_paths(uploaded_paths)
+            flash(str(exc), "error")
+            return render_template("write.html", grade=grade, classroom=classroom, edit_mode=False, post=None, existing_images=[], cache_buster=int(time.time()))
+        except Exception as exc:
+            db.rollback()
+            _cleanup_storage_paths(uploaded_paths)
+            print(f"게시글 저장 오류: {exc}")
+            flash("게시글 저장 중 오류가 발생했습니다.", "error")
+            return render_template("write.html", grade=grade, classroom=classroom, edit_mode=False, post=None, existing_images=[], cache_buster=int(time.time()))
         return redirect(url_for("class_detail", grade=grade, classroom=classroom))
 
     return render_template(
@@ -516,50 +668,113 @@ def write_post(grade, classroom):
         classroom=classroom,
         edit_mode=False,
         post=None,
+        existing_images=[],
         cache_buster=int(time.time()),
     )
 
 
 @app.route("/class/<grade>/<classroom>/post/<int:post_id>/edit", methods=["GET", "POST"])
 def edit_post(grade, classroom, post_id):
-    if g.user is None or not _is_staff(g.user):
-        flash("선생님 계정만 학년 공지를 수정할 수 있습니다.")
-        return redirect(url_for("main"))
-    if classroom != "notice":
-        flash("수정 기능은 학년별 공지 게시판에서만 제공됩니다.")
-        return redirect(url_for("class_detail", grade=grade, classroom=classroom))
-    try:
-        grade_num = int(grade)
-    except ValueError:
-        return redirect(url_for("main"))
+    if g.user is None:
+        flash("로그인이 필요합니다.")
+        return redirect(url_for("login"))
 
     db = database.get_db()
     post = db.execute(
-        "SELECT id, title, content, grade, classroom FROM posts WHERE id = ? AND grade = ? AND classroom = -1",
-        (post_id, grade_num),
+        "SELECT id, title, content, grade, classroom, author_id FROM posts WHERE id = ?",
+        (post_id,),
     ).fetchone()
     if post is None:
         return "게시물을 찾을 수 없습니다.", 404
 
+    route_grade, route_classroom, _ = _post_board_route(post["grade"], post["classroom"])
+    if str(grade) != route_grade or str(classroom) != route_classroom:
+        return "게시물을 찾을 수 없습니다.", 404
+    if not _can_access_stored_board(db, g.user, post["grade"], post["classroom"]):
+        flash("이 게시물을 수정할 권한이 없습니다.")
+        return redirect(url_for("main"))
+
+    is_author = int(post["author_id"]) == int(g.user["id"])
+    can_edit = _is_admin(g.user) or is_author or (int(post["classroom"]) == -1 and _is_teacher(g.user))
+    if not can_edit:
+        flash("본인이 작성한 글만 수정할 수 있습니다.")
+        return redirect(url_for("post_detail", grade=grade, classroom=classroom, post_id=post_id))
+
+    existing_images = _get_post_images(db, post_id)
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         content = request.form.get("content", "").strip()
+        requested_remove_ids = {
+            int(value) for value in request.form.getlist("remove_images") if str(value).isdigit()
+        }
+        removable = [row for row in existing_images if int(row["id"]) in requested_remove_ids]
+        keep_count = len(existing_images) - len(removable)
+        new_files = _request_image_files()
+
         if not title or not content:
             flash("제목과 내용을 모두 입력해주세요.", "error")
+        elif len(title) > 200 or len(content) > 20000:
+            flash("제목은 200자, 내용은 20000자 이하로 작성해주세요.", "error")
+        elif keep_count + len(new_files) > config.POST_IMAGE_MAX_COUNT:
+            flash(f"사진은 게시글당 최대 {config.POST_IMAGE_MAX_COUNT}장까지 첨부할 수 있습니다.", "error")
         else:
-            db.execute(
-                "UPDATE posts SET title = ?, content = ?, updated_at = ? WHERE id = ?",
-                (title, content, datetime.now().isoformat(), post_id),
-            )
-            db.commit()
-            return redirect(url_for("post_detail", grade=grade, classroom=classroom, post_id=post_id))
+            uploaded_paths = []
+            remove_paths = [row["storage_path"] for row in removable]
+            try:
+                now = datetime.now().isoformat()
+                db.execute(
+                    "UPDATE posts SET title = ?, content = ?, updated_at = ? WHERE id = ?",
+                    (title, content, now, post_id),
+                )
+                if removable:
+                    placeholders = ",".join("?" for _ in removable)
+                    db.execute(
+                        f"DELETE FROM post_images WHERE post_id = ? AND id IN ({placeholders})",
+                        [post_id] + [int(row["id"]) for row in removable],
+                    )
+                next_sort = keep_count
+                for image_file in new_files:
+                    storage_path, image_url = post_images.upload(post_id, image_file)
+                    uploaded_paths.append(storage_path)
+                    db.execute(
+                        "INSERT INTO post_images (post_id, storage_path, public_url, sort_order, created_at) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (post_id, storage_path, image_url, next_sort, now),
+                    )
+                    next_sort += 1
+                # 남아 있는 이미지의 순서를 다시 0부터 정리합니다.
+                current_rows = db.execute(
+                    "SELECT id FROM post_images WHERE post_id = ? ORDER BY sort_order, id", (post_id,)
+                ).fetchall()
+                for idx, row in enumerate(current_rows):
+                    db.execute("UPDATE post_images SET sort_order = ? WHERE id = ?", (idx, row["id"]))
+                if _is_admin(g.user):
+                    _audit_admin_action(
+                        db, "게시글 수정", "post", post_id,
+                        f"{route_grade}/{route_classroom} · {title}",
+                    )
+                db.commit()
+                _cleanup_storage_paths(remove_paths)
+                return redirect(url_for("post_detail", grade=grade, classroom=classroom, post_id=post_id))
+            except post_images.PostImageError as exc:
+                db.rollback()
+                _cleanup_storage_paths(uploaded_paths)
+                flash(str(exc), "error")
+            except Exception as exc:
+                db.rollback()
+                _cleanup_storage_paths(uploaded_paths)
+                print(f"게시글 수정 오류: {exc}")
+                flash("게시글 수정 중 오류가 발생했습니다.", "error")
 
+    # 실패 후에도 현재 DB 기준 첨부 목록을 다시 읽습니다.
+    existing_images = _get_post_images(db, post_id)
     return render_template(
         "write.html",
         grade=grade,
         classroom=classroom,
         edit_mode=True,
         post=post,
+        existing_images=existing_images,
         cache_buster=int(time.time()),
     )
 
@@ -619,8 +834,25 @@ def post_detail(grade, classroom, post_id):
     if post is None:
         return "게시물을 찾을 수 없습니다.", 404
 
+    # 학년별 공지는 실제 상세 글을 열었을 때 읽음으로 기록합니다.
+    if g.user is not None and expected_classroom == -1:
+        db.execute(
+            "INSERT INTO post_reads (user_id, post_id, read_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id, post_id) DO UPDATE SET read_at = excluded.read_at",
+            (g.user["id"], post_id, datetime.now().isoformat()),
+        )
+        db.commit()
+
     sanitized_content = bleach.clean(post["content"])
     formatted_content = sanitized_content.replace("\n", "<br>")
+    attached_images = _get_post_images(db, post_id)
+    can_edit = bool(
+        g.user and (
+            _is_admin(g.user)
+            or int(post["author_id"]) == int(g.user["id"])
+            or (expected_classroom == -1 and _is_teacher(g.user))
+        )
+    )
 
     return render_template(
         "post_detail.html",
@@ -628,8 +860,9 @@ def post_detail(grade, classroom, post_id):
         classroom=classroom,
         post=post,
         formatted_content=formatted_content,
+        attached_images=attached_images,
         can_pin=is_staff,
-        can_edit=(classroom == "notice" and is_staff),
+        can_edit=can_edit,
         can_delete=bool(g.user and (_is_admin(g.user) or int(post["author_id"]) == int(g.user["id"]))),
         cache_buster=int(time.time()),
     )
@@ -642,7 +875,7 @@ def delete_post(post_id):
 
     db = database.get_db()
     post = db.execute(
-        "SELECT id, grade, classroom, author_id FROM posts WHERE id = ?",
+        "SELECT id, grade, classroom, author_id, title FROM posts WHERE id = ?",
         (post_id,),
     ).fetchone()
     if post is None:
@@ -653,8 +886,18 @@ def delete_post(post_id):
         return jsonify({"success": False, "message": "이 게시물을 삭제할 권한이 없습니다."}), 403
 
     route_grade, route_classroom, _ = _post_board_route(post["grade"], post["classroom"])
+    image_rows = _get_post_images(db, post_id)
+    image_paths = [row["storage_path"] for row in image_rows]
+    if _is_admin(g.user):
+        _audit_admin_action(
+            db, "게시글 삭제", "post", post_id,
+            f"{route_grade}/{route_classroom} · {post['title']}",
+        )
+    db.execute("DELETE FROM post_reads WHERE post_id = ?", (post_id,))
+    db.execute("DELETE FROM post_images WHERE post_id = ?", (post_id,))
     db.execute("DELETE FROM posts WHERE id = ?", (post_id,))
     db.commit()
+    _cleanup_storage_paths(image_paths)
 
     return jsonify({
         "success": True,
@@ -668,13 +911,19 @@ def toggle_post_pin(post_id):
     if g.user is None or not _is_staff(g.user):
         return jsonify({"success": False, "message": "선생님 권한이 필요합니다."}), 403
     db = database.get_db()
-    post = db.execute("SELECT id, grade, classroom, is_pinned FROM posts WHERE id = ?", (post_id,)).fetchone()
+    post = db.execute("SELECT id, grade, classroom, title, is_pinned FROM posts WHERE id = ?", (post_id,)).fetchone()
     if post is None:
         return jsonify({"success": False, "message": "게시물을 찾을 수 없습니다."}), 404
     if not _can_access_stored_board(db, g.user, post["grade"], post["classroom"]):
         return jsonify({"success": False, "message": "이 게시판의 글을 고정할 권한이 없습니다."}), 403
     new_value = 0 if int(post["is_pinned"] or 0) else 1
     db.execute("UPDATE posts SET is_pinned = ? WHERE id = ?", (new_value, post_id))
+    if _is_admin(g.user):
+        route_grade, route_classroom, _ = _post_board_route(post["grade"], post["classroom"])
+        _audit_admin_action(
+            db, "게시글 고정" if new_value else "게시글 고정 해제", "post", post_id,
+            f"{route_grade}/{route_classroom} · {post['title']}",
+        )
     db.commit()
     return jsonify({"success": True, "is_pinned": bool(new_value)})
 
@@ -867,6 +1116,34 @@ def user_profile():
     })
 
 
+@app.route("/api/change_password", methods=["POST"])
+def change_password():
+    if g.user is None:
+        return jsonify({"success": False, "message": "로그인이 필요합니다."}), 401
+    if _is_admin(g.user):
+        return jsonify({"success": False, "message": "관리자 비밀번호는 서버 환경변수 ADMIN_PASSWORD에서 변경해주세요."}), 403
+
+    payload = request.get_json(silent=True) or {}
+    current_password = str(payload.get("current_password", ""))
+    new_password = str(payload.get("new_password", ""))
+    new_password2 = str(payload.get("new_password2", ""))
+    if not current_password or not new_password or not new_password2:
+        return jsonify({"success": False, "message": "현재 비밀번호와 새 비밀번호를 모두 입력해주세요."}), 400
+    if not check_password_hash(g.user["password"], current_password):
+        return jsonify({"success": False, "message": "현재 비밀번호가 올바르지 않습니다."}), 400
+    if new_password != new_password2:
+        return jsonify({"success": False, "message": "새 비밀번호가 일치하지 않습니다."}), 400
+    if len(new_password) < 8 or pw_class_count(new_password) < 3:
+        return jsonify({"success": False, "message": "새 비밀번호는 8자 이상이며 소문자·대문자·숫자·특수문자 중 3가지 이상을 포함해야 합니다."}), 400
+    if check_password_hash(g.user["password"], new_password):
+        return jsonify({"success": False, "message": "현재 비밀번호와 다른 비밀번호를 사용해주세요."}), 400
+
+    db = database.get_db()
+    db.execute("UPDATE users SET password = ? WHERE id = ?", (generate_password_hash(new_password), g.user["id"]))
+    db.commit()
+    return jsonify({"success": True, "message": "비밀번호를 변경했습니다."})
+
+
 @app.route("/api/site_info", methods=["GET", "POST"])
 def site_info():
     db = database.get_db()
@@ -889,6 +1166,7 @@ def site_info():
             "ON CONFLICT(info_key) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at",
             (key, value, now),
         )
+    _audit_admin_action(db, "사이트 정보 수정", "site_info", "portal", "만든 취지/제작팀 정보 수정")
     db.commit()
     return jsonify({"success": True, "message": "사이트 정보를 저장했습니다."})
 
@@ -914,6 +1192,7 @@ def announcements():
         "INSERT INTO announcements (title, content, created_at, updated_at) VALUES (?, ?, ?, ?)",
         (title, content, now, now),
     )
+    _audit_admin_action(db, "학교 소식 공지 등록", "announcement", cur.lastrowid, title)
     db.commit()
     return jsonify({"success": True, "message": "공지를 등록했습니다.", "id": cur.lastrowid})
 
@@ -923,7 +1202,11 @@ def delete_announcement(announcement_id):
     if g.user is None or not _is_admin(g.user):
         return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
     db = database.get_db()
+    item = db.execute("SELECT id, title FROM announcements WHERE id = ?", (announcement_id,)).fetchone()
+    if item is None:
+        return jsonify({"success": False, "message": "공지를 찾을 수 없습니다."}), 404
     db.execute("DELETE FROM announcements WHERE id = ?", (announcement_id,))
+    _audit_admin_action(db, "학교 소식 공지 삭제", "announcement", announcement_id, item["title"])
     db.commit()
     return jsonify({"success": True})
 
@@ -1115,6 +1398,7 @@ def personal_timetable():
 
     base = _load_base_timetable(db, grade, classroom)
     electives = _load_user_electives(db, g.user["id"]) if grade == 2 else {}
+    elective_room_map = _load_grade2_elective_room_map(db) if grade == 2 else {}
     alerts = []
     days = []
 
@@ -1124,7 +1408,7 @@ def personal_timetable():
         for period in range(1, 8):
             active = _active_period(grade, day, period)
             if not active:
-                cells.append({"period": period, "active": False, "subject": "", "changed": False, "elective": False})
+                cells.append({"period": period, "active": False, "subject": "", "changed": False, "elective": False, "elective_room": ""})
                 continue
 
             is_elective = grade == 2 and (day, period) in GRADE2_ELECTIVE_SLOTS
@@ -1133,8 +1417,14 @@ def personal_timetable():
             changed = False
 
             change_type = ""
+            elective_room_label = ""
             if is_elective:
                 display_subject = electives.get((day, period), "") or "선택과목 미설정"
+                if display_subject != "선택과목 미설정":
+                    room_key = (day, period, _normalize_subject_name(display_subject))
+                    matched_rooms = elective_room_map.get(room_key, [])
+                    if matched_rooms:
+                        elective_room_label = " · ".join(f"2-{room}" for room in matched_rooms)
             else:
                 if base_subject and neis_fetch_ok and base_subject != actual_subject:
                     changed = True
@@ -1168,6 +1458,7 @@ def personal_timetable():
                 "changed": changed,
                 "change_type": change_type,
                 "elective": is_elective,
+                "elective_room": elective_room_label,
                 "base_subject": base_subject,
                 "actual_subject": actual_subject,
             })
@@ -1272,6 +1563,10 @@ def admin_base_timetable():
                 for day, period, subject in normalized if subject
             ],
         )
+        _audit_admin_action(
+            db, "반별 기준 시간표 수정", "class_timetable", f"{grade}-{classroom}",
+            f"{grade}학년 {classroom}반 기준 시간표 저장",
+        )
         db.commit()
     except Exception as e:
         db.rollback()
@@ -1373,6 +1668,8 @@ def admin_user_search():
                 "url": url_for("post_detail", grade=route_grade, classroom=route_classroom, post_id=post["id"]),
             })
         users.append({
+            "id": row["id"],
+            "userid": row["userid"],
             "name": row["name"],
             "student_no": _decrypt_student_no(row["student_no"]),
             "is_teacher": bool(row["is_teacher"]),
@@ -1381,6 +1678,55 @@ def admin_user_search():
         })
 
     return jsonify({"success": True, "users": users})
+
+
+@app.route("/api/admin/users/<int:user_id>/reset_password", methods=["POST"])
+def admin_reset_password(user_id):
+    if g.user is None or not _is_admin(g.user):
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+
+    db = database.get_db()
+    target = db.execute(
+        "SELECT id, userid, name, student_no FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if target is None:
+        return jsonify({"success": False, "message": "계정을 찾을 수 없습니다."}), 404
+    if target["userid"] == config.ADMIN_ID:
+        return jsonify({"success": False, "message": "관리자 비밀번호는 서버 환경변수에서 변경해주세요."}), 400
+
+    temporary_password = _generate_temporary_password()
+    db.execute(
+        "UPDATE users SET password = ? WHERE id = ?",
+        (generate_password_hash(temporary_password), user_id),
+    )
+    _audit_admin_action(
+        db, "비밀번호 초기화", "user", user_id,
+        f"{target['name']} ({target['userid']}) 계정의 비밀번호를 임시 비밀번호로 초기화",
+    )
+    db.commit()
+    return jsonify({
+        "success": True,
+        "message": "임시 비밀번호를 생성했습니다. 이 화면에서 한 번만 전달해주세요.",
+        "temporary_password": temporary_password,
+    })
+
+
+@app.route("/api/admin/audit_logs", methods=["GET"])
+def admin_audit_logs():
+    if g.user is None or not _is_admin(g.user):
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+    try:
+        limit = min(100, max(1, int(request.args.get("limit", 50))))
+    except ValueError:
+        limit = 50
+    db = database.get_db()
+    rows = db.execute(
+        "SELECT id, actor_userid, action, target_type, target_id, details, created_at "
+        "FROM audit_logs ORDER BY id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return jsonify({"success": True, "logs": [dict(row) for row in rows]})
 
 
 # 📌 관리자 전용: 학번으로 선생님 계정 지정/해제
@@ -1407,6 +1753,10 @@ def admin_teacher_role():
         return jsonify({"success": False, "message": "관리자 계정은 선생님 계정으로 변경하지 않습니다."}), 400
 
     db.execute("UPDATE users SET is_teacher = ? WHERE id = ?", (1 if make_teacher else 0, target["id"]))
+    _audit_admin_action(
+        db, "선생님 지정" if make_teacher else "선생님 지정 해제", "user", target["id"],
+        f"{target['name']} ({target['userid']})",
+    )
     db.commit()
     return jsonify({
         "success": True,
@@ -1450,6 +1800,7 @@ def get_my_classes():
     my_classes = []
     is_admin = _is_admin(g.user)
     is_teacher = _is_teacher(g.user)
+    db = database.get_db()
 
     # 관리자: 관리자 전용 + 전 학년 공지 + 모든 통합/학급 게시판
     if is_admin:
@@ -1462,9 +1813,7 @@ def get_my_classes():
             max_class = GRADE_MAX_CLASSROOM[grade_num]
             for class_num in range(1, max_class + 1):
                 my_classes.append({"grade": str(grade_num), "classroom": str(class_num), "display_name": f"{grade_num}학년 {class_num}반"})
-        return jsonify({"success": True, "classes": my_classes})
-
-    db = database.get_db()
+        return jsonify({"success": True, "classes": _attach_notice_unread_counts(db, g.user["id"], my_classes)})
 
     # 선생님: 전 학년 공지는 자동 제공. 일반 학급은 기존처럼 초대코드로 가입한 것만 표시.
     if is_teacher:
@@ -1490,7 +1839,7 @@ def get_my_classes():
         if user_grade in {"1", "2", "3"} and not any(c["grade"] == user_grade and c["classroom"] == "combined" for c in my_classes):
             my_classes.insert(1 if my_classes else 0, {"grade": user_grade, "classroom": "combined", "display_name": f"{user_grade}학년 통합"})
 
-    return jsonify({"success": True, "classes": my_classes})
+    return jsonify({"success": True, "classes": _attach_notice_unread_counts(db, g.user["id"], my_classes)})
 
 if __name__ == "__main__":
     app.run(debug=config.DEBUG)
