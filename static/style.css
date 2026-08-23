@@ -4531,3 +4531,25 @@ body:not(.portal-v3) #my-classes-list a {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* PWA install control */
+.pwa-install-button {
+  width: 100%;
+  min-height: 36px;
+  margin-top: 8px;
+  border: 1px solid #cbd3df;
+  border-radius: 9px;
+  background: #eef2f8;
+  color: #33435f;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pwa-install-button:hover { background: #e5ebf4; }
+.pwa-install-button[hidden] { display: none !important; }
+@media (max-width: 760px) {
+  .portal-v3 .portal-sidebar-footer { flex-wrap: wrap; }
+  .pwa-install-button { flex: 1 0 100%; margin-top: 4px; }
+}

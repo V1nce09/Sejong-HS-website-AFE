@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, session, g, flash
+from flask import Flask, render_template, request, redirect, url_for, jsonify, session, g, flash, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 import os
@@ -18,6 +18,14 @@ import post_images
 
 app = Flask(__name__)
 app.config.from_object(config) # config.py에서 설정 로드
+
+
+@app.route("/service-worker.js")
+def service_worker():
+    response = send_from_directory(app.static_folder, "service-worker.js", mimetype="application/javascript", max_age=0)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Service-Worker-Allowed"] = "/"
+    return response
 
 # 캐시 디렉토리가 없으면 생성 (PythonAnywhere 같은 WSGI 서버 환경을 위함)
 if not os.path.exists(config.CACHE_DIR):

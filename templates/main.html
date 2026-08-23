@@ -3,7 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>세종고 통합 포털</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+  <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='icons/favicon-64.png') }}">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="세종고 포털">
+<title>세종고 통합 포털</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ cache_buster }}">
 </head>
 <body class="portal-v3" data-initial-date="{{ date }}" data-authenticated="{{ 1 if session.get('user') else 0 }}" data-is-admin="{{ 1 if session.get('user') == config['ADMIN_ID'] else 0 }}" data-is-teacher="{{ 1 if g.user and g.user['is_teacher'] else 0 }}">
@@ -33,6 +41,7 @@
         {% else %}
           <a class="sidebar-auth-link primary" href="{{ url_for('login') }}">로그인</a>
         {% endif %}
+        <button type="button" class="pwa-install-button" data-pwa-install hidden>앱 설치</button>
       </div>
     </aside>
 
@@ -176,5 +185,6 @@
   {% endif %}
 
   <script src="{{ url_for('static', filename='js/main.js') }}?v={{ cache_buster }}" defer></script>
+  <script src="{{ url_for('static', filename='js/pwa.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </body>
 </html>

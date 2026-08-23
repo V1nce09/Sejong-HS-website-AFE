@@ -3,7 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>세종고 통합 포털 - {% if grade == 'admin' and classroom == 'general' %}관리자 전용{% elif classroom == 'notice' %}{{ grade }}학년 공지{% elif classroom == 'combined' %}{{ grade }}학년 통합반{% else %}{{ grade }}학년 {{ classroom }}반{% endif %} {% if edit_mode %}수정{% else %}글쓰기{% endif %}</title>
+      <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+  <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='icons/favicon-64.png') }}">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="세종고 포털">
+<title>세종고 통합 포털 - {% if grade == 'admin' and classroom == 'general' %}관리자 전용{% elif classroom == 'notice' %}{{ grade }}학년 공지{% elif classroom == 'combined' %}{{ grade }}학년 통합반{% else %}{{ grade }}학년 {{ classroom }}반{% endif %} {% if edit_mode %}수정{% else %}글쓰기{% endif %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ cache_buster }}">
 </head>
 <body>
@@ -142,5 +150,6 @@
         submitButton.textContent = {{ "'수정 중...'" if edit_mode else "'작성 중...'" }};
     });
 </script>
+  <script src="{{ url_for('static', filename='js/pwa.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </body>
 </html>
