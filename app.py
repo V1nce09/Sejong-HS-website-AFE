@@ -227,6 +227,15 @@ def _normalize_subject_name(subject):
     return re.sub(r"\s+", " ", str(subject or "").strip())
 
 
+def _subjects_equivalent_for_change_detection(base_subject, actual_subject):
+    """변경 알림에서만 서로 같은 수업으로 취급할 표기 차이를 판정합니다."""
+    base = _normalize_subject_name(base_subject)
+    actual = _normalize_subject_name(actual_subject)
+    if base == actual:
+        return True
+    return (base, actual) in TIMETABLE_SUBJECT_EQUIVALENTS
+
+
 def _load_grade2_elective_room_map(db):
     """2학년 기준표의 선택교시 과목 -> 진행 반 목록을 한 번에 만듭니다."""
     rows = db.execute(
@@ -258,6 +267,12 @@ GRADE2_ELECTIVE_SLOTS = {
     (2, 2), (2, 3), (2, 5),
     (3, 1), (3, 2), (3, 3),
     (4, 1), (4, 2), (4, 4),
+}
+# 기준 시간표의 생활/창의적 체험활동 표기와 NEIS 표기를 같은 수업으로 취급합니다.
+# 교시 자체를 예외 처리하지 않으므로, 아래 조합 이외의 실제 변경은 정상적으로 알립니다.
+TIMETABLE_SUBJECT_EQUIVALENTS = {
+    ("동아리", "자율·자치활동"),
+    ("창체", "자율·자치활동"),
 }
 ELECTIVE_SUBJECT_GROUPS = {
     "humanities": [
@@ -1456,7 +1471,11 @@ def personal_timetable():
                     if matched_rooms:
                         elective_room_label = " · ".join(f"2-{room}" for room in matched_rooms)
             else:
-                if base_subject and neis_fetch_ok and base_subject != actual_subject:
+                if (
+                    base_subject
+                    and neis_fetch_ok
+                    and not _subjects_equivalent_for_change_detection(base_subject, actual_subject)
+                ):
                     changed = True
                     if actual_subject:
                         display_subject = actual_subject
