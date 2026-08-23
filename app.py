@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, jsonify, session, g, flash, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import os
 import time # time 모듈 추가
 import hashlib
@@ -15,6 +16,8 @@ import neis
 import weather
 import crypto_utils
 import post_images
+
+SCHOOL_TZ = ZoneInfo("Asia/Seoul")
 
 app = Flask(__name__)
 app.config.from_object(config) # config.py에서 설정 로드
@@ -408,9 +411,17 @@ def login():
 # --- main route: 로그인한 학생이면 자동으로 오늘 학급 시간표/급식 미리 로드 ---
 @app.route("/main")
 def main():
-    # 오늘 날짜 문자열
-    today = datetime.now()
-    date_str = today.strftime("%Y%m%d")
+    # 학교 기준 시각(Asia/Seoul). 20시 이후 메인 급식/시간표는 다음 날짜를 미리 보여줍니다.
+    now = datetime.now(SCHOOL_TZ)
+    date_str = now.strftime("%Y%m%d")
+    display_date = now + timedelta(days=1) if now.hour >= 20 else now
+    display_date_str = display_date.strftime("%Y%m%d")
+    showing_tomorrow = now.hour >= 20
+    # 페이지를 계속 열어 둬도 다음 20:00(KST)에 자동으로 표시 날짜를 갱신합니다.
+    next_rollover = now.replace(hour=20, minute=0, second=0, microsecond=0)
+    if now >= next_rollover:
+        next_rollover += timedelta(days=1)
+    next_rollover_ms = int(next_rollover.timestamp() * 1000)
 
     grade = request.args.get("grade")
     classroom = request.args.get("classroom")
@@ -452,6 +463,9 @@ def main():
         grade=grade,
         classroom=classroom,
         date=date_str,
+        display_date=display_date_str,
+        showing_tomorrow=showing_tomorrow,
+        next_rollover_ms=next_rollover_ms,
         cache_buster=int(time.time()) # cache_buster 추가
     )
 
@@ -1025,8 +1039,16 @@ def _parse_yyyymmdd(value):
 
 
 def _week_bounds(selected):
-    monday = selected - timedelta(days=selected.weekday())
-    friday = monday + timedelta(days=4)
+    """Return the Mon-Fri school days for a Sat-Fri display week.
+
+    The visible timetable/meal week rolls over on Saturday instead of Monday:
+    Saturday/Sunday belong to the upcoming Monday-Friday, while Monday-Friday
+    belong to the current school week.
+    """
+    days_since_saturday = (selected.weekday() - 5) % 7
+    saturday = selected - timedelta(days=days_since_saturday)
+    monday = saturday + timedelta(days=2)
+    friday = saturday + timedelta(days=6)
     return monday, friday
 
 
@@ -1064,7 +1086,7 @@ def school_schedule():
         selected = _parse_yyyymmdd(date_str)
     except ValueError:
         return jsonify({"success": False, "message": "date must be YYYYMMDD"}), 400
-    # 캐시 키가 매일 달라지지 않도록 이번 주 월요일 기준의 고정 범위를 조회합니다.
+    # 캐시 키가 매일 달라지지 않도록 토~금 주차에 대응하는 월요일 기준 고정 범위를 조회합니다.
     # 화면에는 선택일 기준 향후 45일만 필터링해서 보여줍니다.
     week_start, _ = _week_bounds(selected)
     cache_end = week_start + timedelta(days=55)
@@ -1364,10 +1386,10 @@ def personal_timetable():
 
     grade = int(profile["grade"])
     classroom = int(profile["classroom"])
-    monday = selected_date - timedelta(days=selected_date.weekday())
-    friday = monday + timedelta(days=4)
+    # 주간 판정은 토요일~금요일. 표 자체는 실제 수업일인 월~금만 표시합니다.
+    monday, friday = _week_bounds(selected_date)
 
-    # 개인 시간표는 같은 주 안에서 캐시 키가 바뀌지 않도록 월~금 범위로 고정합니다.
+    # 개인 시간표는 토~금 주차를 기준으로 해당 주의 월~금 범위에 캐시 키를 고정합니다.
     neis_range_start = monday.strftime("%Y%m%d")
     neis_range_end = friday.strftime("%Y%m%d")
     neis_fetch_ok = True

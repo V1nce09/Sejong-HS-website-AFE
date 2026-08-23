@@ -1,6 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
   const body = document.body;
   const initialDate = body.dataset.initialDate;
+  const displayDate = body.dataset.displayDate || initialDate;
+  const showingTomorrow = body.dataset.showingTomorrow === '1';
+  const nextRolloverMs = Number(body.dataset.nextRolloverMs || 0);
+  if (nextRolloverMs > Date.now()) {
+    window.setTimeout(() => window.location.reload(), Math.max(1000, nextRolloverMs - Date.now() + 500));
+  }
   const authenticated = body.dataset.authenticated === '1';
   const isAdmin = body.dataset.isAdmin === '1';
   const DAYS = ['월', '화', '수', '목', '금'];
@@ -17,7 +23,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const formatDate = value => value && value.length === 8 ? `${Number(value.slice(4,6))}월 ${Number(value.slice(6,8))}일` : value;
   const weekday = value => { const d = new Date(`${value.slice(0,4)}-${value.slice(4,6)}-${value.slice(6,8)}T12:00:00`); return ['일','월','화','수','목','금','토'][d.getDay()]; };
   const today = initialDate;
-  $('today-label').textContent = `${formatDate(today)} ${weekday(today)}요일`;
+  const schoolDisplayDate = displayDate;
+  $('today-label').textContent = `${formatDate(schoolDisplayDate)} ${weekday(schoolDisplayDate)}요일${showingTomorrow?' · 다음날 미리보기':''}`;
 
   async function api(url, options={}) {
     const response = await fetch(url, options);
@@ -44,20 +51,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const hash = location.hash.replace('#',''); if (document.querySelector(`[data-section="${hash}"]`)) setSection(hash);
 
   async function loadMeals() {
-    if (!cache.meals) cache.meals = api(`/api/week_meals?date=${today}`).catch(() => ({days:[]}));
+    if (!cache.meals) cache.meals = api(`/api/week_meals?date=${schoolDisplayDate}`).catch(() => ({days:[]}));
     const data = await cache.meals;
-    const todayData = (data.days || []).find(d => d.date === today);
+    const todayData = (data.days || []).find(d => d.date === schoolDisplayDate);
     renderMealDay($('home-meal'), todayData);
     const host = $('week-meals');
     if (!host) return;
     if (!data.days?.length) { host.innerHTML = '<div class="empty-panel">이번주 급식 정보가 없습니다.</div>'; return; }
-    host.innerHTML = data.days.map(day => `<article class="meal-day-card ${day.date===today?'today':''}"><div class="meal-day-head"><strong>${day.day_name}요일</strong><span>${formatDate(day.date)}</span></div>${mealMarkup(day.meals)}</article>`).join('');
+    host.innerHTML = data.days.map(day => `<article class="meal-day-card ${day.date===schoolDisplayDate?'today':''}"><div class="meal-day-head"><strong>${day.day_name}요일</strong><span>${formatDate(day.date)}</span></div>${mealMarkup(day.meals)}</article>`).join('');
   }
   function mealMarkup(meals=[]) {
     if (!meals.length) return '<p class="muted">급식 정보 없음</p>';
     return meals.map(m => `<div class="meal-entry"><span class="meal-type">${esc(m.time)}</span><p>${esc(m.menu).replace(/\n/g,'<br>')}</p></div>`).join('');
   }
-  function renderMealDay(host, day) { if (!host) return; host.innerHTML = day ? mealMarkup(day.meals) : '<p class="muted">오늘 급식 정보가 없습니다.</p>'; }
+  function renderMealDay(host, day) { if (!host) return; const label=showingTomorrow?'내일':'오늘'; host.innerHTML = day ? mealMarkup(day.meals) : `<p class="muted">${label} 급식 정보가 없습니다.</p>`; }
 
   async function loadWeather() {
     const host = $('home-weather');
@@ -70,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function fetchPersonalTimetable() {
     if (!authenticated) return null;
-    if (!cache.timetable) cache.timetable = api(`/api/personal_timetable?date=${today}`).catch(e => ({error:e.data || {message:e.message}}));
+    if (!cache.timetable) cache.timetable = api(`/api/personal_timetable?date=${schoolDisplayDate}`).catch(e => ({error:e.data || {message:e.message}}));
     return cache.timetable;
   }
   async function loadTimetable() {
@@ -84,8 +91,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const alerts = data.alerts || [];
     if (alert) { alert.hidden = !alerts.length; alert.innerHTML = alerts.length ? `<strong>시간표 변경 ${alerts.length}건</strong>${alerts.map(a=>`<span>${a.day_name} ${a.period}교시: ${esc(a.from)} → <b>${esc(a.to)}</b></span>`).join('')}` : ''; }
     if(host) host.innerHTML = timetableMarkup(data);
-    const todayObj = (data.days||[]).find(d => d.date === today);
-    if(home) home.innerHTML = todayObj ? `<div class="today-periods">${todayObj.cells.filter(c=>c.active).map(c=>`<div class="today-period ${c.changed?'changed':''}"><span>${c.period}</span><div class="today-subject"><strong>${esc(c.subject)}</strong>${c.elective_room?`<small class="elective-room">${esc(c.elective_room)}</small>`:''}</div></div>`).join('')}</div>` : '<p class="muted">오늘 수업이 없습니다.</p>';
+    const todayObj = (data.days||[]).find(d => d.date === schoolDisplayDate);
+    if(home) home.innerHTML = todayObj ? `<div class="today-periods">${todayObj.cells.filter(c=>c.active).map(c=>`<div class="today-period ${c.changed?'changed':''}"><span>${c.period}</span><div class="today-subject"><strong>${esc(c.subject)}</strong>${c.elective_room?`<small class="elective-room">${esc(c.elective_room)}</small>`:''}</div></div>`).join('')}</div>` : `<p class="muted">${showingTomorrow?'내일':'오늘'} 수업이 없습니다.</p>`;
   }
   function timetableMarkup(data) {
     const days = data.days || [];

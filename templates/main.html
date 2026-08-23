@@ -14,7 +14,7 @@
 <title>세종고 통합 포털</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ cache_buster }}">
 </head>
-<body class="portal-v3" data-initial-date="{{ date }}" data-authenticated="{{ 1 if session.get('user') else 0 }}" data-is-admin="{{ 1 if session.get('user') == config['ADMIN_ID'] else 0 }}" data-is-teacher="{{ 1 if g.user and g.user['is_teacher'] else 0 }}">
+<body class="portal-v3" data-initial-date="{{ date }}" data-display-date="{{ display_date }}" data-showing-tomorrow="{{ 1 if showing_tomorrow else 0 }}" data-next-rollover-ms="{{ next_rollover_ms }}" data-authenticated="{{ 1 if session.get('user') else 0 }}" data-is-admin="{{ 1 if session.get('user') == config['ADMIN_ID'] else 0 }}" data-is-teacher="{{ 1 if g.user and g.user['is_teacher'] else 0 }}">
   <div class="portal-shell">
     <aside class="portal-sidebar">
       <a class="portal-brand" href="#home" data-nav="home">
@@ -58,11 +58,11 @@
         <header class="section-header"><div><p class="eyebrow">TODAY</p><h1>오늘의 학교생활</h1><p id="today-label" class="section-subtitle"></p></div></header>
         <div class="dashboard-grid">
           <article class="dashboard-card meal-card">
-            <div class="card-heading"><span>오늘의 급식</span><button class="text-button" data-jump="meals">이번주 보기</button></div>
+            <div class="card-heading"><span>{{ "내일의 급식" if showing_tomorrow else "오늘의 급식" }}</span><button class="text-button" data-jump="meals">이번주 보기</button></div>
             <div id="home-meal" class="card-body loading-block">불러오는 중...</div>
           </article>
           <article class="dashboard-card timetable-card">
-            <div class="card-heading"><span>오늘의 시간표</span><button class="text-button" data-jump="timetable">이번주 보기</button></div>
+            <div class="card-heading"><span>{{ "내일의 시간표" if showing_tomorrow else "오늘의 시간표" }}</span><button class="text-button" data-jump="timetable">이번주 보기</button></div>
             <div id="home-timetable" class="card-body loading-block">불러오는 중...</div>
           </article>
           <article class="dashboard-card weather-card">
