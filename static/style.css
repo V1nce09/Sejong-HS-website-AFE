@@ -4553,3 +4553,35 @@ body:not(.portal-v3) #my-classes-list a {
   .portal-v3 .portal-sidebar-footer { flex-wrap: wrap; }
   .pwa-install-button { flex: 1 0 100%; margin-top: 4px; }
 }
+
+/* 2학년 선택과목 설정: 15개 교시를 5개 묶음으로 선택 */
+.portal-v3 .elective-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.portal-v3 .elective-group-card {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  border: 1px solid #d9dee8;
+  border-radius: 10px;
+  background: #fff;
+}
+.portal-v3 .elective-group-title {
+  color: #202938;
+  font-size: 13px;
+  font-weight: 800;
+}
+.portal-v3 .elective-group-card small {
+  color: #778297;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.portal-v3 .elective-group-card select {
+  margin-top: 2px;
+}
+@media (max-width: 760px) {
+  .portal-v3 .elective-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

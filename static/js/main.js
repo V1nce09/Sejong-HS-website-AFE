@@ -12,6 +12,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const DAYS = ['월', '화', '수', '목', '금'];
   const DAILY_PERIODS = {1:[7,7,6,7,7], 2:[7,7,6,7,5]};
   const ELECTIVE_SLOTS = new Set(['0:1','0:2','0:5','0:6','1:2','1:5','2:2','2:3','2:5','3:1','3:2','3:3','4:1','4:2','4:4']);
+  const ELECTIVE_GROUPS = [
+    { label:'그룹 1', summary:'월 1·2교시 · 수 5교시', slots:[[0,1],[0,2],[2,5]] },
+    { label:'그룹 2', summary:'월 5·6교시 · 화 2교시', slots:[[0,5],[0,6],[1,2]] },
+    { label:'그룹 3', summary:'수 2·3교시 · 목 1교시', slots:[[2,2],[2,3],[3,1]] },
+    { label:'그룹 4', summary:'목 2·3교시 · 금 4교시', slots:[[3,2],[3,3],[4,4]] },
+    { label:'그룹 5', summary:'화 5교시 · 금 1·2교시', slots:[[1,5],[4,1],[4,2]] }
+  ];
   const SUBJECT_GROUPS = {
     humanities:['윤리와 사상','법과 사회','한국지리 탐구','경제','일본어 회화','사회 문제 탐구','동아시아 역사 기행'],
     science:['역학과 에너지','물질과 에너지','세포와 물질대사','지구시스템과학','융합과학 탐구','인공지능 기초','지식 재산 일반','인공지능 수학']
@@ -224,8 +231,40 @@ document.addEventListener('DOMContentLoaded', () => {
   async function openTimetableSettings(){ if(!authenticated){location.href='/login';return;} $('timetable-settings-overlay').hidden=false; const gradeSel=$('timetable-profile-grade'), classSel=$('timetable-profile-classroom'), msg=$('timetable-settings-message');msg.textContent=''; try{const d=await api('/api/timetable_profile'); const p=d.profile||d.suggested||{grade:1,classroom:1};gradeSel.value=String(p.grade);setClassOptions(classSel,p.grade,p.classroom);await renderElectiveSettings(Number(p.grade));}catch(e){msg.textContent=e.message;msg.className='form-message error';}}
   $('timetable-settings-btn')?.addEventListener('click',openTimetableSettings);
   $('timetable-profile-grade')?.addEventListener('change',e=>{setClassOptions($('timetable-profile-classroom'),e.target.value);renderElectiveSettings(Number(e.target.value));});
-  async function renderElectiveSettings(grade){const g1=$('grade1-custom-notice'),g2=$('grade2-elective-settings'),editor=$('elective-editor');g1.hidden=grade!==1;g2.hidden=grade!==2;if(grade!==2)return;let saved={};try{const d=await api('/api/custom_timetable');(d.cells||[]).forEach(c=>saved[`${c.day}:${c.period}`]=c.subject);}catch(_){} editor.innerHTML=[...ELECTIVE_SLOTS].sort().map(key=>{const [day,period]=key.split(':').map(Number);const opts=[['humanities','문과 계열'],['science','이과 계열']].map(([k,label])=>`<optgroup label="${label}">${SUBJECT_GROUPS[k].map(s=>`<option value="${esc(s)}" ${saved[key]===s?'selected':''}>${esc(s)}</option>`).join('')}</optgroup>`).join('');return `<label><span>${DAYS[day]} ${period}교시</span><select data-day="${day}" data-period="${period}"><option value="">선택 안 함</option>${opts}</select></label>`;}).join(''); }
-  $('timetable-settings-save-btn')?.addEventListener('click',async()=>{const grade=Number($('timetable-profile-grade').value),classroom=Number($('timetable-profile-classroom').value),msg=$('timetable-settings-message');try{await api('/api/timetable_profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grade,classroom})});if(grade===2){const cells=[...$('elective-editor').querySelectorAll('select')].map(s=>({day:Number(s.dataset.day),period:Number(s.dataset.period),subject:s.value}));await api('/api/custom_timetable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cells})});}msg.textContent='시간표 설정을 저장했습니다.';msg.className='form-message success';cache.timetable=null;setTimeout(()=>{$('timetable-settings-overlay').hidden=true;loadTimetable();},400);}catch(e){msg.textContent=e.message;msg.className='form-message error';}});
+  async function renderElectiveSettings(grade){
+    const g1=$('grade1-custom-notice'),g2=$('grade2-elective-settings'),editor=$('elective-editor');
+    g1.hidden=grade!==1;g2.hidden=grade!==2;
+    if(grade!==2)return;
+    let saved={};
+    try{const d=await api('/api/custom_timetable');(d.cells||[]).forEach(c=>saved[`${c.day}:${c.period}`]=c.subject);}catch(_){}
+    const options=[['humanities','문과 계열'],['science','이과 계열']].map(([k,label])=>`<optgroup label="${label}">${SUBJECT_GROUPS[k].map(subject=>`<option value="${esc(subject)}">${esc(subject)}</option>`).join('')}</optgroup>`).join('');
+    editor.innerHTML=ELECTIVE_GROUPS.map((group,index)=>{
+      const [firstDay,firstPeriod]=group.slots[0];
+      const selected=saved[`${firstDay}:${firstPeriod}`]||'';
+      return `<label class="elective-group-card"><span class="elective-group-title">${group.label}</span><small>${group.summary}</small><select data-elective-group="${index}"><option value="">선택 안 함</option>${options}</select></label>`;
+    }).join('');
+    editor.querySelectorAll('select[data-elective-group]').forEach(select=>{
+      const group=ELECTIVE_GROUPS[Number(select.dataset.electiveGroup)];
+      const [day,period]=group.slots[0];
+      select.value=saved[`${day}:${period}`]||'';
+    });
+  }
+  $('timetable-settings-save-btn')?.addEventListener('click',async()=>{
+    const grade=Number($('timetable-profile-grade').value),classroom=Number($('timetable-profile-classroom').value),msg=$('timetable-settings-message');
+    try{
+      await api('/api/timetable_profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grade,classroom})});
+      if(grade===2){
+        const cells=[];
+        $('elective-editor').querySelectorAll('select[data-elective-group]').forEach(select=>{
+          const group=ELECTIVE_GROUPS[Number(select.dataset.electiveGroup)];
+          group.slots.forEach(([day,period])=>cells.push({day,period,subject:select.value}));
+        });
+        await api('/api/custom_timetable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cells})});
+      }
+      msg.textContent='시간표 설정을 저장했습니다.';msg.className='form-message success';cache.timetable=null;
+      setTimeout(()=>{$('timetable-settings-overlay').hidden=true;loadTimetable();},400);
+    }catch(e){msg.textContent=e.message;msg.className='form-message error';}
+  });
 
   if(isAdmin){const ag=$('admin-base-grade'),ac=$('admin-base-classroom');setClassOptions(ac,1);ag?.addEventListener('change',()=>setClassOptions(ac,ag.value));$('admin-base-timetable-btn')?.addEventListener('click',()=>{$('admin-base-overlay').hidden=false;loadAdminBase();});$('admin-base-load')?.addEventListener('click',loadAdminBase);async function loadAdminBase(){const grade=Number(ag.value),cl=Number(ac.value),host=$('admin-base-editor'),msg=$('admin-base-message');msg.textContent='';try{const d=await api(`/api/admin/base_timetable?grade=${grade}&classroom=${cl}`),saved={};(d.cells||[]).forEach(c=>saved[`${c.day}:${c.period}`]=c.subject);host.innerHTML=`<div class="admin-grid-head"><span>교시</span>${DAYS.map(x=>`<span>${x}</span>`).join('')}</div>${Array.from({length:7},(_,i)=>i+1).map(p=>`<div class="admin-grid-row"><strong>${p}</strong>${DAYS.map((_,day)=>{const active=p<=DAILY_PERIODS[grade][day];if(!active)return '<span class="admin-inactive">—</span>';const elective=grade===2&&ELECTIVE_SLOTS.has(`${day}:${p}`);return `<label class="${elective?'elective':''}"><input data-day="${day}" data-period="${p}" maxlength="40" value="${esc(saved[`${day}:${p}`]||'')}" placeholder="${elective?'선택과목 교시':'과목'}"></label>`;}).join('')}</div>`).join('')}`;}catch(e){host.innerHTML='';msg.textContent=e.message;msg.className='form-message error';}}
     $('admin-base-save-btn')?.addEventListener('click',async()=>{const cells=[...$('admin-base-editor').querySelectorAll('input')].map(i=>({day:Number(i.dataset.day),period:Number(i.dataset.period),subject:i.value.trim()}));const msg=$('admin-base-message');try{const d=await api('/api/admin/base_timetable',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({grade:Number(ag.value),classroom:Number(ac.value),cells})});msg.textContent=d.message;msg.className='form-message success';cache.timetable=null;loadAuditLogs();}catch(e){msg.textContent=e.message;msg.className='form-message error';}});}
