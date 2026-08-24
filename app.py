@@ -181,6 +181,31 @@ def _has_class_membership(db, user_id, grade, classroom):
     ).fetchone() is not None
 
 
+def _is_own_student_class(user, grade, classroom):
+    """일반 학생은 학번에서 저장된 학년/반을 기본 소속 학급으로 인정합니다."""
+    if user is None or _is_admin(user) or _is_teacher(user):
+        return False
+    try:
+        return (
+            int(user["grade"] or 0) == int(grade)
+            and int(user["classroom"] or 0) == int(classroom)
+            and _is_valid_school_class(grade, classroom)
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+def _has_regular_class_access(db, user, grade, classroom):
+    if user is None:
+        return False
+    if _is_admin(user) or _is_own_student_class(user, grade, classroom):
+        return True
+    return (
+        f"{grade}-{classroom}" in session.get("unlocked_classes", [])
+        or _has_class_membership(db, user["id"], grade, classroom)
+    )
+
+
 def _can_access_stored_board(db, user, grade, classroom):
     if user is None:
         return False
@@ -194,10 +219,7 @@ def _can_access_stored_board(db, user, grade, classroom):
         return _is_teacher(user) or str(user["grade"] or "") == str(grade)
     if classroom == 0:
         return str(user["grade"] or "") == str(grade)
-    return (
-        f"{grade}-{classroom}" in session.get("unlocked_classes", [])
-        or _has_class_membership(db, user["id"], grade, classroom)
-    )
+    return _has_regular_class_access(db, user, grade, classroom)
 
 
 def _get_post_images(db, post_id):
@@ -452,12 +474,9 @@ def main():
             flash("유효하지 않은 학급 정보입니다.")
             return redirect(url_for("main"))
 
-        # 초대 코드 검사
-        unlocked_classes = session.get('unlocked_classes', [])
-        class_identifier = f"{grade}-{classroom}"
-        is_admin = _is_admin(g.user)
-
-        if not is_admin and class_identifier not in unlocked_classes:
+        # 일반 학생의 자기 반, 초대코드로 해제한 반, DB에 가입된 반을 모두 허용합니다.
+        db = database.get_db()
+        if not _has_regular_class_access(db, g.user, grade_num, class_num):
             return redirect(url_for('unlock_class', grade=grade, classroom=classroom))
         # 권한이 있으면, 해당 학급으로 페이지를 렌더링
 
@@ -552,9 +571,7 @@ def class_detail(grade, classroom):
             flash("유효하지 않은 학급 정보입니다.")
             return redirect(url_for("main"))
 
-        unlocked_classes = session.get("unlocked_classes", [])
-        is_member = g.user and _has_class_membership(db, g.user["id"], grade_num, class_num)
-        if not (is_admin or class_identifier in unlocked_classes or is_member):
+        if not _has_regular_class_access(db, g.user, grade_num, class_num):
             return redirect(url_for("unlock_class", grade=grade, classroom=classroom))
         can_write = bool(g.user)
         post_grade, post_classroom = grade_num, class_num
@@ -639,10 +656,7 @@ def write_post(grade, classroom):
         except ValueError:
             return redirect(url_for("main"))
         db = database.get_db()
-        unlocked_classes = session.get("unlocked_classes", [])
-        class_identifier = f"{grade}-{classroom}"
-        is_member = _has_class_membership(db, g.user["id"], post_grade, post_classroom)
-        if not (is_admin or class_identifier in unlocked_classes or is_member):
+        if not _has_regular_class_access(db, g.user, post_grade, post_classroom):
             flash("글을 작성할 권한이 없는 학급입니다.")
             return redirect(url_for("class_detail", grade=grade, classroom=classroom))
 
@@ -854,10 +868,7 @@ def post_detail(grade, classroom, post_id):
         except ValueError:
             return redirect(url_for("main"))
         db = database.get_db()
-        unlocked_classes = session.get("unlocked_classes", [])
-        class_identifier = f"{grade}-{classroom}"
-        is_member = g.user and _has_class_membership(db, g.user["id"], expected_grade, expected_classroom)
-        if not (is_admin or class_identifier in unlocked_classes or is_member):
+        if not _has_regular_class_access(db, g.user, expected_grade, expected_classroom):
             return redirect(url_for("unlock_class", grade=grade, classroom=classroom))
 
     db = database.get_db()
@@ -976,6 +987,10 @@ def unlock_class():
     if not _is_valid_school_class(grade, classroom):
         flash("존재하지 않는 학급입니다.")
         return redirect(url_for("main"))
+
+    # 일반 학생의 자기 반은 초대 코드 없이 기본 접근합니다.
+    if _is_own_student_class(g.user, grade, classroom):
+        return redirect(url_for("class_detail", grade=grade, classroom=classroom))
 
     if request.method == "POST":
         submitted_code = request.form.get("invite_code", "").upper()
@@ -1872,6 +1887,17 @@ def get_my_classes():
         user_grade = str(g.user["grade"] or "")
         if user_grade in {"1", "2", "3"}:
             my_classes.append({"grade": user_grade, "classroom": "notice", "display_name": f"{user_grade}학년 공지"})
+
+    # 일반 학생은 학번에서 확인된 자기 반 게시판을 초대 코드 없이 기본 제공합니다.
+    if not is_teacher:
+        user_grade = str(g.user["grade"] or "")
+        user_classroom = str(g.user["classroom"] or "")
+        if _is_valid_school_class(user_grade, user_classroom):
+            my_classes.append({
+                "grade": user_grade,
+                "classroom": user_classroom,
+                "display_name": f"{user_grade}학년 {user_classroom}반",
+            })
 
     classes_from_db = db.execute(
         "SELECT grade, classroom FROM classes WHERE user_id = ? ORDER BY grade, classroom",
