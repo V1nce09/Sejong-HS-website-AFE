@@ -187,7 +187,9 @@ document.addEventListener('DOMContentLoaded', () => {
           ? `<div class="admin-user-posts">${u.posts.map(p => `<a href="${esc(p.url)}"><strong>${esc(p.title)}</strong><span>${esc(p.board_name)} · ${esc(String(p.created_at || '').slice(0,10))}</span></a>`).join('')}</div>`
           : '<div class="admin-user-no-posts">작성한 글이 없습니다.</div>';
         const resetButton=u.is_admin?'':`<button class="secondary-button admin-reset-password" type="button" data-user-id="${Number(u.id)}">임시 비밀번호 발급</button>`;
-        return `<article class="admin-user-result" data-user-id="${Number(u.id)}"><div class="admin-user-head"><div><strong>${esc(u.name)}</strong><span>${esc(u.student_no || '학번 미등록')}</span></div><span class="admin-role-badge ${u.is_teacher?'teacher':''}">${role}</span></div>${resetButton}<div class="admin-temp-password" hidden></div>${posts}</article>`;
+        const deleteButton=u.is_admin?'':`<button class="danger-button admin-delete-user" type="button" data-user-id="${Number(u.id)}" data-user-name="${esc(u.name)}">계정 삭제</button>`;
+        const actions=(resetButton||deleteButton)?`<div class="admin-user-actions">${resetButton}${deleteButton}</div>`:'';
+        return `<article class="admin-user-result" data-user-id="${Number(u.id)}"><div class="admin-user-head"><div><strong>${esc(u.name)}</strong><span>${esc(u.student_no || '학번 미등록')}</span></div><span class="admin-role-badge ${u.is_teacher?'teacher':''}">${role}</span></div>${actions}<div class="admin-temp-password" hidden></div>${posts}</article>`;
       }).join('');
       host.querySelectorAll('.admin-reset-password').forEach(button=>button.addEventListener('click',async()=>{
         if(!confirm('이 계정의 기존 비밀번호를 사용할 수 없게 하고 임시 비밀번호를 발급할까요?'))return;
@@ -198,6 +200,18 @@ document.addEventListener('DOMContentLoaded', () => {
           if(box){box.hidden=false;box.innerHTML=`<span>임시 비밀번호</span><code>${esc(d.temporary_password)}</code><button type="button" class="text-button copy-temp-password">복사</button>`;box.querySelector('.copy-temp-password')?.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(d.temporary_password);}catch(_){}});}
           loadAuditLogs();
         }catch(err){alert(err.message);}finally{button.disabled=false;}
+      }));
+      host.querySelectorAll('.admin-delete-user').forEach(button=>button.addEventListener('click',async()=>{
+        const name=button.dataset.userName||'이 계정';
+        if(!confirm(`${name} 계정을 삭제할까요?\n\n작성한 게시글과 첨부사진, 개인 시간표, 가입 게시판 기록도 함께 삭제되며 복구할 수 없습니다.`))return;
+        if(!confirm('정말 삭제합니다. 계속할까요?'))return;
+        button.disabled=true;
+        try{
+          const d=await api(`/api/admin/users/${button.dataset.userId}/delete`,{method:'POST'});
+          alert(d.message);
+          button.closest('.admin-user-result')?.remove();
+          loadAuditLogs();
+        }catch(err){alert(err.message);button.disabled=false;}
       }));
     } catch (err) {
       host.innerHTML = `<div class="admin-empty-state">${esc(err.message)}</div>`;

@@ -5139,3 +5139,30 @@ body:not(.portal-v3) .container select {
 body:not(.portal-v3) .container .delete-post-btn:hover {
   border-color: var(--ui-line-strong) !important;
 }
+
+
+/* Admin account deletion */
+.portal-v3 .admin-user-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.portal-v3 .danger-button {
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 0;
+  background: #a73535;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.portal-v3 .danger-button:hover { background: #8f2d2d; }
+.portal-v3 .danger-button:disabled { opacity: .55; cursor: default; }
+@media (max-width: 560px) {
+  .portal-v3 .admin-user-actions { display: grid; grid-template-columns: 1fr; }
+  .portal-v3 .admin-user-actions > button { width: 100%; }
+}

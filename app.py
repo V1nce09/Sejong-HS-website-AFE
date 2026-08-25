@@ -60,6 +60,11 @@ def load_logged_in_user_and_session():
         g.user = db.execute(
             "SELECT id, userid, password, name, grade, classroom, student_no, is_teacher FROM users WHERE userid = ?", (user_id,)
         ).fetchone()
+        # 관리자가 계정을 삭제한 경우 다른 기기에 남아 있던 서명 세션도 다음 요청에서 즉시 무효화합니다.
+        if g.user is None:
+            session.clear()
+            session["session_id"] = os.urandom(24).hex()
+            g.session_id = session["session_id"]
 
 # --- 헬퍼 함수 ---
 def pw_class_count(password):
@@ -297,6 +302,8 @@ GRADE2_ELECTIVE_SLOTS = {
 # 교시 자체를 예외 처리하지 않으므로, 아래 조합 이외의 실제 변경은 정상적으로 알립니다.
 TIMETABLE_SUBJECT_EQUIVALENTS = {
     ("동아리", "자율·자치활동"),
+    ("동아리", "동아리활동"),
+    ("동아리", "동아리 활동"),
     ("창체", "자율·자치활동"),
 }
 ELECTIVE_SUBJECT_GROUPS = {
@@ -1777,6 +1784,64 @@ def admin_reset_password(user_id):
         "success": True,
         "message": "임시 비밀번호를 생성했습니다. 이 화면에서 한 번만 전달해주세요.",
         "temporary_password": temporary_password,
+    })
+
+
+@app.route("/api/admin/users/<int:user_id>/delete", methods=["POST"])
+def admin_delete_user(user_id):
+    if g.user is None or not _is_admin(g.user):
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+
+    db = database.get_db()
+    target = db.execute(
+        "SELECT id, userid, name, student_no, is_teacher FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if target is None:
+        return jsonify({"success": False, "message": "계정을 찾을 수 없습니다."}), 404
+    if target["userid"] == config.ADMIN_ID:
+        return jsonify({"success": False, "message": "관리자 계정은 삭제할 수 없습니다."}), 400
+
+    # 계정 삭제 시 작성자 없는 게시글이 남지 않도록 작성글과 그 부속 데이터도 함께 정리합니다.
+    post_rows = db.execute(
+        "SELECT id, title FROM posts WHERE author_id = ? ORDER BY id",
+        (user_id,),
+    ).fetchall()
+    post_ids = [int(row["id"]) for row in post_rows]
+    image_paths = []
+    if post_ids:
+        placeholders = ",".join("?" for _ in post_ids)
+        image_rows = db.execute(
+            f"SELECT storage_path FROM post_images WHERE post_id IN ({placeholders})",
+            post_ids,
+        ).fetchall()
+        image_paths = [row["storage_path"] for row in image_rows]
+
+        # 읽음 기록은 삭제 대상 사용자의 기록뿐 아니라 삭제될 게시글을 가리키는 다른 사용자의 기록도 제거합니다.
+        db.execute(f"DELETE FROM post_reads WHERE post_id IN ({placeholders})", post_ids)
+        db.execute(f"DELETE FROM post_images WHERE post_id IN ({placeholders})", post_ids)
+        db.execute(f"DELETE FROM posts WHERE id IN ({placeholders})", post_ids)
+
+    db.execute("DELETE FROM post_reads WHERE user_id = ?", (user_id,))
+    db.execute("DELETE FROM custom_timetable WHERE user_id = ?", (user_id,))
+    db.execute("DELETE FROM timetable_profiles WHERE user_id = ?", (user_id,))
+    db.execute("DELETE FROM classes WHERE user_id = ?", (user_id,))
+
+    student_no = _decrypt_student_no(target["student_no"]) or "학번 미등록"
+    _audit_admin_action(
+        db, "계정 삭제", "user", user_id,
+        f"{target['name']} ({target['userid']}, {student_no}) 계정 삭제 · 작성글 {len(post_ids)}개 함께 삭제",
+    )
+    db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    db.commit()
+
+    # DB 정합성을 우선 보장하고 외부 Storage 파일은 best-effort로 후처리합니다.
+    _cleanup_storage_paths(image_paths)
+
+    return jsonify({
+        "success": True,
+        "message": f"{target['name']} 계정과 작성글 {len(post_ids)}개를 삭제했습니다.",
+        "deleted_posts": len(post_ids),
     })
 
 
