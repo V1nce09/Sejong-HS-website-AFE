@@ -1,52 +1,44 @@
 <!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-      <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='icons/favicon-64.png') }}">
-  <meta name="theme-color" content="#f7f8fc">
+  <meta name="theme-color" content="#f4f5f7">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="세종고 포털">
-<title>클래스 잠금 해제</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <title>클래스 입장 | 세종고 포털</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-  <div class="auth-container">
-    <p class="back-wrap">
-      <a class="back-btn" href="{{ url_for('main') }}">← 메인으로</a>
-    </p>
-
-    <h1>{{ grade }}학년 {{ classroom }}반</h1>
-
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="error">
-          {% for message in messages %}
-            {{ message }}
-          {% endfor %}
-        </div>
-      {% endif %}
-    {% endwith %}
-
-    <p class="subtitle">이 클래스에 접근하려면 초대 코드가 필요합니다.</p>
-
-    <form method="post" action="{{ url_for('unlock_class', grade=grade, classroom=classroom) }}" autocomplete="off" novalidate>
-      <div class="input-group">
-        <label>초대 코드
-          <div class="field">
-            <input name="invite_code" type="text" required autofocus placeholder="초대 코드를 입력하세요">
-          </div>
-        </label>
+<body class="auth-page">
+  <main class="auth-shell">
+    <header class="auth-brandbar">
+      <a class="auth-brand" href="{{ url_for('main') }}">
+        <img src="{{ url_for('static', filename='img/school-logo.png') }}" alt="세종고등학교 로고">
+        <span><strong>세종고 포털</strong><small>Sjh Portal</small></span>
+      </a>
+      <a class="auth-back-link" href="{{ url_for('main') }}">메인으로</a>
+    </header>
+    <section class="auth-content">
+      <div class="auth-heading">
+        <span class="auth-section-label">CLASS</span>
+        <h1>{{ grade }}학년 {{ classroom }}반</h1>
       </div>
-
-      <button type="submit" class="submit-btn">입장하기</button>
-    </form>
-
-  </div>
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}<div class="auth-error">{% for message in messages %}{{ message }}{% endfor %}</div>{% endif %}
+      {% endwith %}
+      <form method="post" action="{{ url_for('unlock_class', grade=grade, classroom=classroom) }}" autocomplete="off" novalidate class="auth-form">
+        <label>초대 코드
+          <input name="invite_code" type="text" required autofocus autocomplete="off">
+        </label>
+        <button type="submit" class="auth-submit">입장</button>
+      </form>
+    </section>
+  </main>
   <script src="{{ url_for('static', filename='js/pwa.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </body>
 </html>

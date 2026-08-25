@@ -1,40 +1,52 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-      <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='icons/favicon-64.png') }}">
-  <meta name="theme-color" content="#f7f8fc">
+  <meta name="theme-color" content="#f4f5f7">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="세종고 포털">
-<title>로그인</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <title>로그인 | 세종고 포털</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body class="login-body">
-    <div class="login-container">
-        <!-- 뒤로가기 (히스토리 우선, 없으면 인덱스로 이동) -->
-        <p class="back-wrap">
-            <a class="back-btn" href="{{ url_for('main') }}">메인으로</a>
-        </p>
+<body class="auth-page auth-login-page">
+  <main class="auth-shell">
+    <header class="auth-brandbar">
+      <a class="auth-brand" href="{{ url_for('main') }}">
+        <img src="{{ url_for('static', filename='img/school-logo.png') }}" alt="세종고등학교 로고">
+        <span><strong>세종고 포털</strong><small>Sjh Portal</small></span>
+      </a>
+      <a class="auth-back-link" href="{{ url_for('main') }}">메인으로</a>
+    </header>
 
-        <h2 class="site-title">세종고 포털</h2>
-        <form method="POST">
-            <input type="text" name="userid" placeholder="아이디" required>
-            <input type="password" name="password" placeholder="비밀번호" required>
-            <button type="submit" class="btn">로그인</button>
-            {% if error %}
-                <p class="error">{{ error }}</p>
-            {% endif %}
-        </form>
+    <section class="auth-content">
+      <div class="auth-heading">
+        <span class="auth-section-label">ACCOUNT</span>
+        <h1>로그인</h1>
+      </div>
 
-        <p style="margin-top:12px; text-align:center;">
-            <a href="{{ url_for('register') }}" class="signup-link">회원가입</a>
-        </p>
-    </div>
+      <form method="POST" class="auth-form auth-login-form">
+        <label>아이디
+          <input type="text" name="userid" autocomplete="username" required>
+        </label>
+        <label>비밀번호
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        {% if error %}<p class="auth-error">{{ error }}</p>{% endif %}
+        <button type="submit" class="auth-submit">로그인</button>
+      </form>
+
+      <div class="auth-footer-link">
+        <span>계정이 없나요?</span>
+        <a href="{{ url_for('register') }}">회원가입</a>
+      </div>
+    </section>
+  </main>
   <script src="{{ url_for('static', filename='js/pwa.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </body>
 </html>

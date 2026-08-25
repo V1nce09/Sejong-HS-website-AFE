@@ -2,29 +2,38 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='icons/favicon-64.png') }}">
-  <meta name="theme-color" content="#f7f8fc">
+  <meta name="theme-color" content="#f4f5f7">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="세종고 포털">
-<title>환영합니다 - 세종고 포털</title>
+  <title>세종고 포털</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body class="landing-page">
-  <div class="landing">
-    <h1 class="landing-title">세종고 통합 포털</h1>
-    <p class="landing-sub">시간표와 급식 정보를 확인하려면 로그인 또는 회원가입하세요.</p>
-
-    <div class="btns">
-      <a class="btn primary" href="{{ url_for('login') }}">로그인</a>
-      <a class="btn primary" href="{{ url_for('register') }}">회원가입</a>
-      <a class="btn ghost" href="{{ url_for('main') }}?guest=1">게스트로 보기</a>
-    </div>
-  </div>
+<body class="auth-page landing-page">
+  <main class="auth-shell landing-shell">
+    <header class="auth-brandbar">
+      <div class="auth-brand">
+        <img src="{{ url_for('static', filename='img/school-logo.png') }}" alt="세종고등학교 로고">
+        <span><strong>세종고 포털</strong><small>Sjh Portal</small></span>
+      </div>
+    </header>
+    <section class="auth-content landing-content">
+      <div class="auth-heading">
+        <span class="auth-section-label">SEJONG HIGH SCHOOL</span>
+        <h1>학교생활을 한곳에서</h1>
+      </div>
+      <nav class="landing-actions" aria-label="시작 메뉴">
+        <a class="auth-submit" href="{{ url_for('login') }}">로그인</a>
+        <a class="auth-secondary" href="{{ url_for('register') }}">회원가입</a>
+        <a class="auth-text-link" href="{{ url_for('main') }}?guest=1">게스트로 보기</a>
+      </nav>
+    </section>
+  </main>
   <script src="{{ url_for('static', filename='js/pwa.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </body>
 </html>

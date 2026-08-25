@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const inp = document.getElementById(id);
             if (!inp) return;
             inp.type = inp.type === 'password' ? 'text' : 'password';
-            btn.textContent = inp.type === 'password' ? '👁' : '🛡️';
+            btn.textContent = inp.type === 'password' ? '보기' : '숨기기';
         });
     });
 

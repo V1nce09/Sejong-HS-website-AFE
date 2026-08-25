@@ -1,90 +1,75 @@
 <!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-      <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='icons/favicon-64.png') }}">
-  <meta name="theme-color" content="#f7f8fc">
+  <meta name="theme-color" content="#f4f5f7">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="세종고 포털">
-<title>회원가입</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <title>회원가입 | 세종고 포털</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
-  <div class="auth-container">
-    <!-- 뒤로가기 (히스토리 우선, 없으면 인덱스로 이동) -->
-    <p class="back-wrap">
-      <a class="back-btn" href="{{ url_for('index') }}" onclick="event.preventDefault(); history.back();">← 뒤로</a>
-    </p>
+<body class="auth-page auth-register-page">
+  <main class="auth-shell auth-shell-wide">
+    <header class="auth-brandbar">
+      <a class="auth-brand" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='img/school-logo.png') }}" alt="세종고등학교 로고">
+        <span><strong>세종고 포털</strong><small>Sjh Portal</small></span>
+      </a>
+      <a class="auth-back-link" href="{{ url_for('login') }}">로그인</a>
+    </header>
 
-    <h1>회원가입</h1>
+    <section class="auth-content">
+      <div class="auth-heading">
+        <span class="auth-section-label">ACCOUNT</span>
+        <h1>회원가입</h1>
+      </div>
 
-    {% if error %}
-      <div class="error">{{ error }}</div>
-    {% endif %}
+      {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
 
-    <p class="subtitle">시간표·급식 정보를 보기 위해 가입하세요. 간단한 정보만 필요합니다.</p>
-
-    <form method="post" autocomplete="off" novalidate id="registerForm">
-      <div class="input-group">
+      <form method="post" autocomplete="off" novalidate id="registerForm" class="auth-form auth-register-form">
         <label>아이디
-          <div class="field">
-            <input name="userid" type="text" required autofocus placeholder="아이디를 입력하세요">
-          </div>
+          <input name="userid" type="text" required autofocus autocomplete="username">
         </label>
-      </div>
-
-      <div class="input-group">
         <label>이름
-          <div class="field">
-            <input name="name" type="text" required placeholder="이름을 입력하세요">
-          </div>
+          <input name="name" type="text" required autocomplete="name">
         </label>
-      </div>
-
-      <div class="input-row">
-        <label>비밀번호
-          <div class="field has-toggle">
-            <input id="pwd" name="password" type="password" required placeholder="비밀번호">
-            <button type="button" class="toggle-btn" data-target="pwd" aria-label="비밀번호 표시">👁</button>
-          </div>
-        </label>
-
-        <label>비밀번호 확인
-          <div class="field has-toggle">
-            <input id="pwd2" name="password2" type="password" required placeholder="비밀번호 확인">
-            <button type="button" class="toggle-btn" data-target="pwd2" aria-label="비밀번호 표시">👁</button>
-          </div>
-        </label>
-      </div>
-
-      <!-- 경고/설명 텍스트 -->
-      <div style="text-align:center;">
-        <small id="pwHint" style="color:#55606a; display:block; margin-bottom:6px;">
-          비밀번호는 소문자·대문자·숫자·특수문자 중 3가지 이상을 사용하세요.
-        </small>
-        <small id="pwWarning" style="color:#b36b00; display:none; font-weight:600;"></small>
-      </div>
-
-      <div class="input-group">
+        <div class="auth-form-row">
+          <label>비밀번호
+            <span class="auth-password-field">
+              <input id="pwd" name="password" type="password" required autocomplete="new-password">
+              <button type="button" class="toggle-btn" data-target="pwd" aria-label="비밀번호 표시">보기</button>
+            </span>
+          </label>
+          <label>비밀번호 확인
+            <span class="auth-password-field">
+              <input id="pwd2" name="password2" type="password" required autocomplete="new-password">
+              <button type="button" class="toggle-btn" data-target="pwd2" aria-label="비밀번호 표시">보기</button>
+            </span>
+          </label>
+        </div>
+        <div class="auth-password-help">
+          <small id="pwHint">소문자·대문자·숫자·특수문자 중 3가지 이상 사용</small>
+          <small id="pwWarning" hidden></small>
+        </div>
         <label>학번
-          <div class="field">
-            <input id="student_no" name="student_no" type="text" inputmode="numeric" pattern="\d{5}" maxlength="5" placeholder="학번을 입력하세요 (5자리)">
-          </div>
+          <input id="student_no" name="student_no" type="text" inputmode="numeric" pattern="\d{5}" maxlength="5" placeholder="5자리">
         </label>
+        <button type="submit" class="auth-submit" id="submitBtn">회원가입</button>
+      </form>
+
+      <div class="auth-footer-link">
+        <span>이미 계정이 있나요?</span>
+        <a href="{{ url_for('login') }}">로그인</a>
       </div>
-
-      <button type="submit" class="submit-btn" id="submitBtn">회원가입</button>
-    </form>
-
-    <p class="notice"><a href="{{ url_for('login') }}">로그인으로 이동</a></p>
-  </div>
-
-<script src="{{ url_for('static', filename='js/register.js') }}" defer></script>
+    </section>
+  </main>
+  <script src="{{ url_for('static', filename='js/register.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/pwa.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </body>
 </html>
