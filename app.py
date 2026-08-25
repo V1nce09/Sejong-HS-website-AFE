@@ -53,6 +53,9 @@ def load_logged_in_user_and_session():
     if user_id is None:
         g.user = None
     else:
+        # 배포 전 생성된 기존 로그인 세션도 다음 요청부터 30일 유지 세션으로 승격합니다.
+        if not session.permanent:
+            session.permanent = True
         db = database.get_db()
         g.user = db.execute(
             "SELECT id, userid, password, name, grade, classroom, student_no, is_teacher FROM users WHERE userid = ?", (user_id,)
@@ -429,7 +432,8 @@ def login():
         db = database.get_db()
         user = db.execute("SELECT * FROM users WHERE userid = ?", (userid,)).fetchone()
         if user and check_password_hash(user["password"], password):
-            # 로그인 성공시 세션에 필요한 정보 저장
+            # 로그인 성공 시 마지막 활동 기준 30일 동안 유지되는 세션으로 발급합니다.
+            session.permanent = True
             session["user"] = userid
             # 학생번호 복호화
             plain_sn = ""

@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 # AES 암호화 키는 배포 환경변수에서만 읽습니다.
 APP_AES_KEY = os.getenv('APP_AES_KEY')
@@ -22,6 +23,14 @@ if not ADMIN_PASSWORD:
     raise RuntimeError('ADMIN_PASSWORD environment variable is required')
 
 DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() in ('true', '1', 't')
+
+# 로그인 세션: 마지막 활동 기준 30일 유지.
+# PythonAnywhere는 HTTPS이므로 Secure 쿠키를 기본으로 사용합니다.
+PERMANENT_SESSION_LIFETIME = timedelta(days=int(os.getenv("SESSION_LIFETIME_DAYS", "30")))
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "True").lower() in ("true", "1", "t")
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_REFRESH_EACH_REQUEST = True
 
 # 데이터베이스 설정
 DATABASE_PATH = os.path.join(BASE_DIR, "users.db")
