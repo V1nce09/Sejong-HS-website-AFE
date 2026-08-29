@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
@@ -13,6 +14,7 @@
   <meta name="apple-mobile-web-app-title" content="세종고 포털">
   <title>회원가입 | 세종고 포털</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='js/csrf.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </head>
 <body class="auth-page auth-register-page">
   <main class="auth-shell auth-shell-wide">
@@ -32,7 +34,7 @@
 
       {% if error %}<div class="auth-error">{{ error }}</div>{% endif %}
 
-      <form method="post" autocomplete="off" novalidate id="registerForm" class="auth-form auth-register-form">
+      <form method="post" autocomplete="off" novalidate id="registerForm" class="auth-form auth-register-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label>아이디
           <input name="userid" type="text" required autofocus autocomplete="username">
         </label>

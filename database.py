@@ -132,6 +132,43 @@ def init_db():
     )
     """)
     cur.execute("""
+    CREATE TABLE IF NOT EXISTS login_attempts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT NOT NULL,
+        userid TEXT NOT NULL DEFAULT '',
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        first_failed_at TEXT NOT NULL,
+        last_failed_at TEXT NOT NULL,
+        locked_until TEXT
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS security_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        userid TEXT,
+        student_no_hash TEXT,
+        ip TEXT NOT NULL,
+        path TEXT NOT NULL,
+        method TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        details TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS blacklist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        userid TEXT,
+        student_no_hash TEXT,
+        ip TEXT,
+        reason TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1
+    )
+    """)
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS audit_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         actor_id INTEGER,
@@ -152,6 +189,10 @@ def init_db():
     if "is_teacher" not in user_columns:
         cur.execute("ALTER TABLE users ADD COLUMN is_teacher INTEGER NOT NULL DEFAULT 0")
 
+    blacklist_columns = {row[1] for row in cur.execute("PRAGMA table_info(blacklist)").fetchall()}
+    if "userid" not in blacklist_columns:
+        cur.execute("ALTER TABLE blacklist ADD COLUMN userid TEXT")
+
     post_columns = {row[1] for row in cur.execute("PRAGMA table_info(posts)").fetchall()}
     if "is_pinned" not in post_columns:
         cur.execute("ALTER TABLE posts ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0")
@@ -163,6 +204,13 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_post_images_post ON post_images (post_id, sort_order)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_post_reads_user ON post_reads (user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_post_reads_post ON post_reads (post_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_key ON login_attempts (ip, userid)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_security_events_created ON security_events (created_at DESC)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_security_events_user ON security_events (user_id, created_at DESC)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_blacklist_user ON blacklist (user_id, active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_blacklist_userid ON blacklist (userid, active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_blacklist_student ON blacklist (student_no_hash, active)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_blacklist_ip ON blacklist (ip, active)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_custom_timetable_user ON custom_timetable (user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_base_timetable_class ON class_base_timetable (grade, classroom)")

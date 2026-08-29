@@ -32,6 +32,22 @@ SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "True").lower() in ("
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_REFRESH_EACH_REQUEST = True
 
+
+# Cloudflare 프록시를 실제로 연결한 뒤에만 True로 설정합니다.
+TRUST_CLOUDFLARE = os.getenv("TRUST_CLOUDFLARE", "False").lower() in ("true", "1", "t")
+
+# 보안: 로그인/요청 제한
+LOGIN_FAIL_WINDOW_SECONDS = int(os.getenv("LOGIN_FAIL_WINDOW_SECONDS", "600"))
+LOGIN_FAIL_LIMIT = int(os.getenv("LOGIN_FAIL_LIMIT", "5"))
+LOGIN_FAIL_LONG_LIMIT = int(os.getenv("LOGIN_FAIL_LONG_LIMIT", "10"))
+LOGIN_LONG_LOCK_SECONDS = int(os.getenv("LOGIN_LONG_LOCK_SECONDS", "3600"))
+REQUESTS_PER_MINUTE = int(os.getenv("REQUESTS_PER_MINUTE", "120"))
+POSTS_PER_MINUTE = int(os.getenv("POSTS_PER_MINUTE", "30"))
+API_REQUESTS_PER_MINUTE = int(os.getenv("API_REQUESTS_PER_MINUTE", "60"))
+RATE_BLOCK_SECONDS = int(os.getenv("RATE_BLOCK_SECONDS", "300"))
+SECURITY_EVENT_WINDOW_SECONDS = int(os.getenv("SECURITY_EVENT_WINDOW_SECONDS", "600"))
+SECURITY_EVENT_BLACKLIST_THRESHOLD = int(os.getenv("SECURITY_EVENT_BLACKLIST_THRESHOLD", "5"))
+
 # 데이터베이스 설정
 DATABASE_PATH = os.path.join(BASE_DIR, "users.db")
 

@@ -9,6 +9,7 @@ import re
 import secrets
 import string
 import bleach
+from collections import defaultdict, deque
 
 import config
 import database
@@ -30,6 +31,125 @@ def service_worker():
     response.headers["Service-Worker-Allowed"] = "/"
     return response
 
+
+# --- 보안 계층 ---
+_RATE_BUCKETS = defaultdict(deque)
+_RATE_BLOCKED = {}
+_RATE_PRUNE_LOCK = None
+
+def _client_ip():
+    # Cloudflare 프록시를 명시적으로 활성화한 경우에만 CF-Connecting-IP를 신뢰합니다.
+    if config.TRUST_CLOUDFLARE:
+        return (request.headers.get("CF-Connecting-IP") or request.remote_addr or "unknown")[:100]
+    return (request.remote_addr or "unknown")[:100]
+
+def _student_no_hash(plain):
+    if not plain:
+        return ""
+    return hashlib.sha256(str(plain).strip().encode("utf-8")).hexdigest()
+
+def _blacklist_match(db, user=None, ip=None):
+    ip = ip or _client_ip()
+    if ip and db.execute("SELECT 1 FROM blacklist WHERE ip = ? AND active = 1 LIMIT 1", (ip,)).fetchone():
+        return True
+    if user is not None:
+        if db.execute("SELECT 1 FROM blacklist WHERE user_id = ? AND active = 1 LIMIT 1", (int(user["id"]),)).fetchone():
+            return True
+        if db.execute("SELECT 1 FROM blacklist WHERE userid = ? AND active = 1 LIMIT 1", (str(user["userid"]),)).fetchone():
+            return True
+        plain = _decrypt_student_no(user["student_no"])
+        h = _student_no_hash(plain)
+        if h and db.execute("SELECT 1 FROM blacklist WHERE student_no_hash = ? AND active = 1 LIMIT 1", (h,)).fetchone():
+            return True
+    return False
+
+def _record_security_event(db, event_type, details="", user=None, ip=None):
+    ip = ip or _client_ip()
+    uid = int(user["id"]) if user is not None else None
+    userid = str(user["userid"]) if user is not None else None
+    sn_hash = _student_no_hash(_decrypt_student_no(user["student_no"])) if user is not None else ""
+    db.execute(
+        "INSERT INTO security_events (user_id, userid, student_no_hash, ip, path, method, event_type, details, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (uid, userid, sn_hash, ip, request.path[:500], request.method[:10], str(event_type)[:80], str(details)[:500], datetime.now().isoformat()),
+    )
+    db.commit()
+    if user is not None and not _is_admin(user):
+        cutoff = (datetime.now() - timedelta(seconds=config.SECURITY_EVENT_WINDOW_SECONDS)).isoformat()
+        row = db.execute(
+            "SELECT COUNT(*) AS cnt FROM security_events WHERE user_id = ? AND created_at >= ? AND event_type IN ('invalid_csrf','rate_limit','unauthorized_admin','blocked_method')",
+            (int(user["id"]), cutoff),
+        ).fetchone()
+        if row and int(row["cnt"]) >= config.SECURITY_EVENT_BLACKLIST_THRESHOLD:
+            reason = "반복적인 비정상 요청"
+            db.execute("INSERT INTO blacklist (user_id, userid, student_no_hash, ip, reason, created_at, active) VALUES (?, ?, ?, ?, ?, ?, 1)", (uid, userid, sn_hash or None, None, reason, datetime.now().isoformat()))
+            db.commit()
+            return True
+    return False
+
+def _rate_limit_allowed(key, limit, window=60):
+    now = time.monotonic()
+    blocked_until = _RATE_BLOCKED.get(key, 0)
+    if blocked_until > now:
+        return False
+    q = _RATE_BUCKETS[key]
+    cutoff = now - window
+    while q and q[0] <= cutoff:
+        q.popleft()
+    q.append(now)
+    if len(q) > limit:
+        _RATE_BLOCKED[key] = now + config.RATE_BLOCK_SECONDS
+        return False
+    return True
+
+def _login_lock_status(db, ip, userid):
+    row = db.execute("SELECT locked_until FROM login_attempts WHERE ip = ? AND userid = ?", (ip, userid)).fetchone()
+    if not row or not row["locked_until"]:
+        return None
+    try:
+        until = datetime.fromisoformat(row["locked_until"])
+    except ValueError:
+        return None
+    if until > datetime.now():
+        return until
+    return None
+
+def _record_login_failure(db, ip, userid):
+    now = datetime.now()
+    row = db.execute("SELECT id, failed_count, first_failed_at FROM login_attempts WHERE ip = ? AND userid = ?", (ip, userid)).fetchone()
+    if row:
+        try: first = datetime.fromisoformat(row["first_failed_at"])
+        except ValueError: first = now
+        if (now-first).total_seconds() > config.LOGIN_FAIL_WINDOW_SECONDS:
+            count = 1; first = now
+        else:
+            count = int(row["failed_count"]) + 1
+        locked = None
+        if count >= config.LOGIN_FAIL_LONG_LIMIT:
+            locked = (now + timedelta(seconds=config.LOGIN_LONG_LOCK_SECONDS)).isoformat()
+        elif count >= config.LOGIN_FAIL_LIMIT:
+            locked = (now + timedelta(seconds=config.LOGIN_FAIL_WINDOW_SECONDS)).isoformat()
+        db.execute("UPDATE login_attempts SET failed_count=?, first_failed_at=?, last_failed_at=?, locked_until=? WHERE id=?", (count, first.isoformat(), now.isoformat(), locked, row["id"]))
+    else:
+        db.execute("INSERT INTO login_attempts (ip, userid, failed_count, first_failed_at, last_failed_at, locked_until) VALUES (?, ?, 1, ?, ?, NULL)", (ip, userid, now.isoformat(), now.isoformat()))
+    db.commit()
+    row = db.execute("SELECT failed_count, locked_until FROM login_attempts WHERE ip = ? AND userid = ?", (ip, userid)).fetchone()
+    return int(row["failed_count"]), row["locked_until"] if row else None
+
+def _clear_login_failures(db, ip, userid):
+    db.execute("DELETE FROM login_attempts WHERE ip = ? AND userid = ?", (ip, userid))
+    db.commit()
+
+def _csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+@app.context_processor
+def inject_security_context():
+    return {"csrf_token": _csrf_token()}
+
 # 캐시 디렉토리가 없으면 생성 (PythonAnywhere 같은 WSGI 서버 환경을 위함)
 if not os.path.exists(config.CACHE_DIR):
     os.makedirs(config.CACHE_DIR)
@@ -43,28 +163,67 @@ def request_too_large(_error):
 
 @app.before_request
 def load_logged_in_user_and_session():
-    # 세션 ID 관리 (로그인 여부와 관계없이)
     if 'session_id' not in session:
-        session['session_id'] = os.urandom(24).hex() # 고유한 세션 ID 생성
+        session['session_id'] = os.urandom(24).hex()
     g.session_id = session['session_id']
-
-    # 로그인된 사용자 정보 로드
     user_id = session.get("user")
-    if user_id is None:
-        g.user = None
-    else:
-        # 배포 전 생성된 기존 로그인 세션도 다음 요청부터 30일 유지 세션으로 승격합니다.
+    db = database.get_db()
+    g.user = None
+    if user_id is not None:
         if not session.permanent:
             session.permanent = True
-        db = database.get_db()
-        g.user = db.execute(
-            "SELECT id, userid, password, name, grade, classroom, student_no, is_teacher FROM users WHERE userid = ?", (user_id,)
-        ).fetchone()
+        g.user = db.execute("SELECT id, userid, password, name, grade, classroom, student_no, is_teacher FROM users WHERE userid = ?", (user_id,)).fetchone()
+        if g.user is None:
+            session.clear(); session["session_id"] = os.urandom(24).hex(); g.session_id = session["session_id"]
+        elif _is_admin(g.user):
+            session.permanent = False
+    # 블랙리스트 계정/IP는 정적 리소스까지 막지 않고 애플리케이션 요청만 차단합니다.
+    if request.path.startswith('/static/') or request.path == '/service-worker.js':
+        return None
+    if _blacklist_match(db, g.user, _client_ip()):
+        session.clear()
+        return jsonify({"success": False, "message": "보안 정책에 의해 접근이 제한된 계정 또는 접속 환경입니다."}), 403
+    ip = _client_ip()
+    # 비로그인 사용자의 과도한 새로고침/API 호출도 IP 단위로 제한합니다.
+    if request.path.startswith('/api/'):
+        limit = config.API_REQUESTS_PER_MINUTE if request.method == 'GET' else config.POSTS_PER_MINUTE
+    else:
+        limit = config.REQUESTS_PER_MINUTE if request.method == 'GET' else config.POSTS_PER_MINUTE
+    if not _rate_limit_allowed(f"ip:{ip}:all", limit):
+        if g.user is not None:
+            _record_security_event(db, 'rate_limit', f'{request.method} {request.path}', g.user, ip)
+        return jsonify({"success": False, "message": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."}), 429
+    # CSRF는 모든 상태 변경 요청에서 검증합니다.
+    if request.method in ('POST','PUT','PATCH','DELETE'):
+        supplied = request.headers.get('X-CSRFToken') or request.form.get('csrf_token')
+        if not supplied or not secrets.compare_digest(str(supplied), str(_csrf_token())):
+            if g.user is not None:
+                locked = _record_security_event(db, 'invalid_csrf', f'{request.method} {request.path}', g.user, _client_ip())
+                if locked:
+                    session.clear()
+                    g.user = None
+            return jsonify({"success": False, "message": "보안 토큰이 유효하지 않습니다. 페이지를 새로고침한 후 다시 시도해주세요."}), 403
         # 관리자가 계정을 삭제한 경우 다른 기기에 남아 있던 서명 세션도 다음 요청에서 즉시 무효화합니다.
         if g.user is None:
             session.clear()
             session["session_id"] = os.urandom(24).hex()
             g.session_id = session["session_id"]
+
+@app.after_request
+def apply_security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.supabase.co; connect-src 'self' https://*.supabase.co; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'")
+    if response.status_code in (401,403,429) and getattr(g, 'user', None) is not None:
+        db = database.get_db()
+        event_type = 'rate_limit' if response.status_code == 429 else 'unauthorized_admin' if request.path.startswith('/api/admin') else 'blocked_method'
+        locked = _record_security_event(db, event_type, f'{response.status_code} {request.path}', g.user, _client_ip())
+        if locked:
+            session.clear()
+            g.user = None
+    return response
 
 # --- 헬퍼 함수 ---
 def pw_class_count(password):
@@ -433,14 +592,20 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        userid = request.form["userid"]
-        password = request.form["password"]
-
+        userid = request.form.get("userid", "").strip()[:80]
+        password = request.form.get("password", "")
         db = database.get_db()
+        ip = _client_ip()
+        if not _rate_limit_allowed(f"login:{ip}", config.LOGIN_FAIL_LIMIT * 3):
+            return render_template("login.html", error="로그인 요청이 너무 많습니다. 잠시 후 다시 시도해주세요."), 429
+        locked = _login_lock_status(db, ip, userid)
+        if locked:
+            remaining = max(1, int((locked - datetime.now()).total_seconds() // 60))
+            return render_template("login.html", error=f"로그인 시도가 제한되었습니다. 약 {remaining + 1}분 후 다시 시도해주세요."), 429
         user = db.execute("SELECT * FROM users WHERE userid = ?", (userid,)).fetchone()
-        if user and check_password_hash(user["password"], password):
-            # 로그인 성공 시 마지막 활동 기준 30일 동안 유지되는 세션으로 발급합니다.
-            session.permanent = True
+        if user and not _blacklist_match(db, user, ip) and check_password_hash(user["password"], password):
+            _clear_login_failures(db, ip, userid)
+            session.permanent = False if user["userid"] == config.ADMIN_ID else True
             session["user"] = userid
             # 학생번호 복호화
             plain_sn = ""
@@ -453,6 +618,9 @@ def login():
             session["student_no"] = plain_sn
             session["display_name"] = user["name"]
             return redirect(url_for("main"))
+        count, locked_until = _record_login_failure(db, ip, userid)
+        if count >= config.LOGIN_FAIL_LIMIT:
+            return render_template("login.html", error="로그인 시도가 제한되었습니다. 잠시 후 다시 시도해주세요."), 429
         return render_template("login.html", error="아이디 또는 비밀번호가 올바르지 않습니다.")
     return render_template("login.html")
 
@@ -1843,6 +2011,86 @@ def admin_delete_user(user_id):
         "message": f"{target['name']} 계정과 작성글 {len(post_ids)}개를 삭제했습니다.",
         "deleted_posts": len(post_ids),
     })
+
+
+@app.route("/api/admin/security/events", methods=["GET"])
+def admin_security_events():
+    if g.user is None or not _is_admin(g.user):
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+    db = database.get_db()
+    rows = db.execute(
+        "SELECT id, userid, ip, path, method, event_type, details, created_at FROM security_events ORDER BY id DESC LIMIT 100"
+    ).fetchall()
+    return jsonify({"success": True, "events": [dict(r) for r in rows]})
+
+
+@app.route("/api/admin/security/login_attempts", methods=["GET"])
+def admin_login_attempts():
+    if g.user is None or not _is_admin(g.user):
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+    db = database.get_db()
+    rows = db.execute(
+        "SELECT ip, userid, failed_count, last_failed_at, locked_until FROM login_attempts ORDER BY last_failed_at DESC LIMIT 100"
+    ).fetchall()
+    return jsonify({"success": True, "attempts": [dict(r) for r in rows]})
+
+
+def _blacklist_payload_target(db, kind, value):
+    kind = str(kind or '').strip().lower()
+    value = str(value or '').strip()
+    if kind == 'user':
+        try: uid = int(value)
+        except ValueError: return None, None, None, '계정 ID가 올바르지 않습니다.', None
+        row = db.execute("SELECT id, userid, name, student_no FROM users WHERE id = ?", (uid,)).fetchone()
+        if row is None or row['userid'] == config.ADMIN_ID: return None, None, None, '차단할 계정을 찾을 수 없거나 관리자 계정입니다.', None
+        return uid, _student_no_hash(_decrypt_student_no(row['student_no'])), None, '', row['userid']
+    if kind == 'student_no':
+        if not re.fullmatch(r'\d{5}', value): return None, None, None, '학번은 5자리 숫자여야 합니다.', None
+        return None, _student_no_hash(value), None, '', None
+    if kind == 'ip':
+        if len(value) > 100 or any(c.isspace() for c in value): return None, None, None, 'IP 주소 형식이 올바르지 않습니다.', None
+        return None, None, value, '', None
+    return None, None, None, '차단 유형이 올바르지 않습니다.', None
+
+
+@app.route("/api/admin/security/blacklist", methods=["GET", "POST"])
+def admin_security_blacklist():
+    if g.user is None or not _is_admin(g.user):
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+    db = database.get_db()
+    if request.method == 'GET':
+        rows = db.execute(
+            "SELECT b.id, b.user_id, u.userid, u.name, b.student_no_hash, b.ip, b.reason, b.created_at, b.active "
+            "FROM blacklist b LEFT JOIN users u ON u.id = b.user_id WHERE b.active = 1 ORDER BY b.id DESC LIMIT 200"
+        ).fetchall()
+        items=[]
+        for r in rows:
+            label = r['userid'] or ('학번 블랙리스트' if r['student_no_hash'] else r['ip'] or '대상')
+            items.append({"id":r['id'],"target":label,"name":r['name'] or '',"ip":r['ip'] or '',"reason":r['reason'],"created_at":r['created_at']})
+        return jsonify({"success": True, "items": items})
+    payload = request.get_json(silent=True) or {}
+    uid, sn_hash, ip, err, target_userid = _blacklist_payload_target(db, payload.get('kind'), payload.get('value'))
+    if err: return jsonify({"success":False,"message":err}),400
+    reason = str(payload.get('reason') or '관리자에 의한 보안 차단').strip()[:200]
+    exists = db.execute("SELECT id FROM blacklist WHERE active=1 AND ((user_id IS NOT NULL AND user_id=?) OR (userid IS NOT NULL AND userid=?) OR (student_no_hash IS NOT NULL AND student_no_hash=?) OR (ip IS NOT NULL AND ip=?)) LIMIT 1", (uid, target_userid, sn_hash, ip)).fetchone()
+    if exists: return jsonify({"success":False,"message":"이미 활성화된 블랙리스트 항목입니다."}),409
+    db.execute("INSERT INTO blacklist (user_id, userid, student_no_hash, ip, reason, created_at, active) VALUES (?, ?, ?, ?, ?, ?, 1)", (uid, target_userid, sn_hash or None, ip or None, reason, datetime.now().isoformat()))
+    _audit_admin_action(db, '보안 블랙리스트 등록', 'security', None, f'{payload.get("kind")} 대상 차단: {reason}')
+    db.commit()
+    return jsonify({"success":True,"message":"블랙리스트에 등록했습니다."})
+
+
+@app.route("/api/admin/security/blacklist/<int:item_id>", methods=["DELETE"])
+def admin_security_blacklist_remove(item_id):
+    if g.user is None or not _is_admin(g.user):
+        return jsonify({"success": False, "message": "관리자 권한이 필요합니다."}), 403
+    db=database.get_db()
+    row=db.execute("SELECT id FROM blacklist WHERE id=? AND active=1",(item_id,)).fetchone()
+    if row is None: return jsonify({"success":False,"message":"활성 블랙리스트를 찾을 수 없습니다."}),404
+    db.execute("UPDATE blacklist SET active=0 WHERE id=?",(item_id,))
+    _audit_admin_action(db,'보안 블랙리스트 해제','security',item_id,'관리자가 블랙리스트 항목을 해제')
+    db.commit()
+    return jsonify({"success":True,"message":"블랙리스트를 해제했습니다."})
 
 
 @app.route("/api/admin/audit_logs", methods=["GET"])

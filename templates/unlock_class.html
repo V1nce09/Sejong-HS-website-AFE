@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
@@ -13,6 +14,7 @@
   <meta name="apple-mobile-web-app-title" content="세종고 포털">
   <title>클래스 입장 | 세종고 포털</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="{{ url_for('static', filename='js/csrf.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </head>
 <body class="auth-page">
   <main class="auth-shell">
@@ -31,7 +33,7 @@
       {% with messages = get_flashed_messages() %}
         {% if messages %}<div class="auth-error">{% for message in messages %}{{ message }}{% endfor %}</div>{% endif %}
       {% endwith %}
-      <form method="post" action="{{ url_for('unlock_class', grade=grade, classroom=classroom) }}" autocomplete="off" novalidate class="auth-form">
+      <form method="post" action="{{ url_for('unlock_class', grade=grade, classroom=classroom) }}" autocomplete="off" novalidate class="auth-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label>초대 코드
           <input name="invite_code" type="text" required autofocus autocomplete="off">
         </label>

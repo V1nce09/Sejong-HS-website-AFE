@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
@@ -13,6 +14,7 @@
   <meta name="apple-mobile-web-app-title" content="세종고 포털">
 <title>세종고 통합 포털</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ cache_buster }}">
+  <script src="{{ url_for('static', filename='js/csrf.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </head>
 <body class="portal-v3" data-initial-date="{{ date }}" data-display-date="{{ display_date }}" data-showing-tomorrow="{{ 1 if showing_tomorrow else 0 }}" data-next-rollover-ms="{{ next_rollover_ms }}" data-authenticated="{{ 1 if session.get('user') else 0 }}" data-is-admin="{{ 1 if session.get('user') == config['ADMIN_ID'] else 0 }}" data-is-teacher="{{ 1 if g.user and g.user['is_teacher'] else 0 }}">
   <div class="portal-shell">
@@ -160,6 +162,23 @@
             <p id="admin-teacher-message" class="form-message"></p>
           </article>
         </div>
+        <article class="content-card admin-security-card">
+          <div class="subsection-heading"><h2>보안 관리</h2><button id="admin-security-refresh" class="text-button" type="button">새로고침</button></div>
+          <div class="security-admin-tools">
+            <div class="security-block-form">
+              <select id="security-block-kind"><option value="user">계정</option><option value="student_no">학번</option><option value="ip">IP</option></select>
+              <input id="security-block-value" placeholder="계정 ID / 학번 / IP">
+              <input id="security-block-reason" maxlength="200" placeholder="차단 사유">
+              <button id="security-block-submit" class="danger-button" type="button">블랙리스트 등록</button>
+            </div>
+          </div>
+          <div class="security-admin-grid">
+            <div><h3>로그인 실패 기록</h3><div id="admin-login-attempts" class="admin-audit-logs"><div class="loading-block">불러오는 중...</div></div></div>
+            <div><h3>위험 요청 기록</h3><div id="admin-security-events" class="admin-audit-logs"><div class="loading-block">불러오는 중...</div></div></div>
+          </div>
+          <div><h3>활성 블랙리스트</h3><div id="admin-blacklist" class="admin-audit-logs"><div class="loading-block">불러오는 중...</div></div></div>
+          <p id="admin-security-message" class="form-message"></p>
+        </article>
         <article class="content-card admin-audit-card">
           <div class="subsection-heading"><h2>관리자 작업 기록</h2><button id="admin-audit-refresh" class="text-button" type="button">새로고침</button></div>
           <div id="admin-audit-logs" class="admin-audit-logs"><div class="loading-block">불러오는 중...</div></div>
@@ -184,6 +203,7 @@
   <div id="admin-base-overlay" class="portal-modal-overlay" hidden><div class="portal-modal wide"><button class="modal-x" data-close-modal="admin-base-overlay">×</button><h3>반별 기준 시간표 설정</h3><div class="settings-row"><label>학년<select id="admin-base-grade"><option value="1">1학년</option><option value="2">2학년</option></select></label><label>반<select id="admin-base-classroom"></select></label><button id="admin-base-load" class="secondary-button" type="button">불러오기</button></div><div id="admin-base-editor" class="admin-base-editor"></div><p id="admin-base-message" class="form-message"></p><div class="form-actions"><button class="secondary-button" data-close-modal="admin-base-overlay">취소</button><button id="admin-base-save-btn" class="primary-button">저장</button></div></div></div>
   {% endif %}
 
+  <script src="{{ url_for('static', filename='js/security.js') }}?v={{ cache_buster }}" defer></script>
   <script src="{{ url_for('static', filename='js/main.js') }}?v={{ cache_buster }}" defer></script>
   <script src="{{ url_for('static', filename='js/pwa.js') }}?v={{ cache_buster|default(1) }}" defer></script>
 </body>

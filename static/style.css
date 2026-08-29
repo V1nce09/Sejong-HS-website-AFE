@@ -5166,3 +5166,10 @@ body:not(.portal-v3) .container .delete-post-btn:hover {
   .portal-v3 .admin-user-actions { display: grid; grid-template-columns: 1fr; }
   .portal-v3 .admin-user-actions > button { width: 100%; }
 }
+
+.portal-v3 .security-admin-tools { margin-bottom: 18px; }
+.portal-v3 .security-block-form { display:grid; grid-template-columns:130px 1fr 1fr auto; gap:8px; }
+.portal-v3 .security-block-form input, .portal-v3 .security-block-form select { min-width:0; }
+.portal-v3 .security-admin-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
+.portal-v3 .security-admin-grid h3, .portal-v3 .admin-security-card > div > h3 { font-size:13px; margin:0 0 8px; }
+@media (max-width: 700px) { .portal-v3 .security-block-form { grid-template-columns:1fr; } .portal-v3 .security-admin-grid { grid-template-columns:1fr; } }
