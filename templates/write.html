@@ -106,7 +106,7 @@
         </div>
         <div style="text-align: right;">
           <button id="submit-post-btn" class="primary-button" type="submit">{% if edit_mode %}수정 완료{% else %}작성 완료{% endif %}</button>
-          <button class="secondary-button" type="button" onclick="history.back()">취소</button>
+          <a class="secondary-button" href="{{ url_for('class_detail', grade=grade, classroom=classroom) }}">취소</a>
         </div>
       </form>
     </main>

@@ -64,6 +64,12 @@ def _blacklist_match(db, user=None, ip=None):
     return False
 
 def _record_security_event(db, event_type, details="", user=None, ip=None):
+    """보안 이벤트를 기록합니다.
+
+    정상 사용에서 발생할 수 있는 CSRF 만료나 일시적인 rate limit은 기록만 하고
+    계정 자동 차단 근거로 사용하지 않습니다. 자동 블랙리스트는 반복적인 관리자
+    권한 우회처럼 오탐 가능성이 낮은 고위험 이벤트에만 적용합니다.
+    """
     ip = ip or _client_ip()
     uid = int(user["id"]) if user is not None else None
     userid = str(user["userid"]) if user is not None else None
@@ -73,16 +79,28 @@ def _record_security_event(db, event_type, details="", user=None, ip=None):
         (uid, userid, sn_hash, ip, request.path[:500], request.method[:10], str(event_type)[:80], str(details)[:500], datetime.now().isoformat()),
     )
     db.commit()
-    if user is not None and not _is_admin(user):
+    g.security_event_recorded = True
+
+    high_risk_events = ("unauthorized_admin", "security_probe")
+    if user is not None and not _is_admin(user) and event_type in high_risk_events:
         cutoff = (datetime.now() - timedelta(seconds=config.SECURITY_EVENT_WINDOW_SECONDS)).isoformat()
+        placeholders = ",".join("?" for _ in high_risk_events)
         row = db.execute(
-            "SELECT COUNT(*) AS cnt FROM security_events WHERE user_id = ? AND created_at >= ? AND event_type IN ('invalid_csrf','rate_limit','unauthorized_admin','blocked_method')",
-            (int(user["id"]), cutoff),
+            f"SELECT COUNT(*) AS cnt FROM security_events WHERE user_id = ? AND created_at >= ? AND event_type IN ({placeholders})",
+            (int(user["id"]), cutoff, *high_risk_events),
         ).fetchone()
         if row and int(row["cnt"]) >= config.SECURITY_EVENT_BLACKLIST_THRESHOLD:
-            reason = "반복적인 비정상 요청"
-            db.execute("INSERT INTO blacklist (user_id, userid, student_no_hash, ip, reason, created_at, active) VALUES (?, ?, ?, ?, ?, ?, 1)", (uid, userid, sn_hash or None, None, reason, datetime.now().isoformat()))
-            db.commit()
+            already = db.execute(
+                "SELECT 1 FROM blacklist WHERE active=1 AND (user_id=? OR userid=? OR (student_no_hash IS NOT NULL AND student_no_hash=?)) LIMIT 1",
+                (uid, userid, sn_hash),
+            ).fetchone()
+            if not already:
+                reason = "반복적인 관리자 권한 우회 시도"
+                db.execute(
+                    "INSERT INTO blacklist (user_id, userid, student_no_hash, ip, reason, created_at, active) VALUES (?, ?, ?, ?, ?, ?, 1)",
+                    (uid, userid, sn_hash or None, None, reason, datetime.now().isoformat()),
+                )
+                db.commit()
             return True
     return False
 
@@ -166,48 +184,83 @@ def load_logged_in_user_and_session():
     if 'session_id' not in session:
         session['session_id'] = os.urandom(24).hex()
     g.session_id = session['session_id']
-    user_id = session.get("user")
+    g.security_event_recorded = False
+
     db = database.get_db()
+    user_id = session.get("user")
     g.user = None
     if user_id is not None:
-        if not session.permanent:
-            session.permanent = True
-        g.user = db.execute("SELECT id, userid, password, name, grade, classroom, student_no, is_teacher FROM users WHERE userid = ?", (user_id,)).fetchone()
+        g.user = db.execute(
+            "SELECT id, userid, password, name, grade, classroom, student_no, is_teacher FROM users WHERE userid = ?",
+            (user_id,),
+        ).fetchone()
         if g.user is None:
-            session.clear(); session["session_id"] = os.urandom(24).hex(); g.session_id = session["session_id"]
-        elif _is_admin(g.user):
-            session.permanent = False
-    # 블랙리스트 계정/IP는 정적 리소스까지 막지 않고 애플리케이션 요청만 차단합니다.
-    if request.path.startswith('/static/') or request.path == '/service-worker.js':
-        return None
-    if _blacklist_match(db, g.user, _client_ip()):
-        session.clear()
-        return jsonify({"success": False, "message": "보안 정책에 의해 접근이 제한된 계정 또는 접속 환경입니다."}), 403
-    ip = _client_ip()
-    # 비로그인 사용자의 과도한 새로고침/API 호출도 IP 단위로 제한합니다.
-    if request.path.startswith('/api/'):
-        limit = config.API_REQUESTS_PER_MINUTE if request.method == 'GET' else config.POSTS_PER_MINUTE
-    else:
-        limit = config.REQUESTS_PER_MINUTE if request.method == 'GET' else config.POSTS_PER_MINUTE
-    if not _rate_limit_allowed(f"ip:{ip}:all", limit):
-        if g.user is not None:
-            _record_security_event(db, 'rate_limit', f'{request.method} {request.path}', g.user, ip)
-        return jsonify({"success": False, "message": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."}), 429
-    # CSRF는 모든 상태 변경 요청에서 검증합니다.
-    if request.method in ('POST','PUT','PATCH','DELETE'):
-        supplied = request.headers.get('X-CSRFToken') or request.form.get('csrf_token')
-        if not supplied or not secrets.compare_digest(str(supplied), str(_csrf_token())):
-            if g.user is not None:
-                locked = _record_security_event(db, 'invalid_csrf', f'{request.method} {request.path}', g.user, _client_ip())
-                if locked:
-                    session.clear()
-                    g.user = None
-            return jsonify({"success": False, "message": "보안 토큰이 유효하지 않습니다. 페이지를 새로고침한 후 다시 시도해주세요."}), 403
-        # 관리자가 계정을 삭제한 경우 다른 기기에 남아 있던 서명 세션도 다음 요청에서 즉시 무효화합니다.
-        if g.user is None:
+            # 삭제된 계정의 오래된 서명 세션을 즉시 무효화합니다.
             session.clear()
             session["session_id"] = os.urandom(24).hex()
             g.session_id = session["session_id"]
+        else:
+            # 학생/선생님은 30일 유지, 관리자는 브라우저 세션만 사용합니다.
+            session.permanent = not _is_admin(g.user)
+
+    # 정적 리소스는 애플리케이션 rate limit / blacklist 검사 대상에서 제외합니다.
+    if request.path.startswith('/static/') or request.path == '/service-worker.js':
+        return None
+
+    ip = _client_ip()
+    if _blacklist_match(db, g.user, ip):
+        session.clear()
+        if request.path.startswith('/api/'):
+            return jsonify({"success": False, "message": "보안 정책에 의해 접근이 제한된 계정 또는 접속 환경입니다."}), 403
+        return "보안 정책에 의해 접근이 제한된 계정 또는 접속 환경입니다.", 403
+
+    # 학교 네트워크에서는 여러 학생이 하나의 공인 IP를 공유할 수 있습니다.
+    # 로그인 사용자는 계정 단위, 비로그인 사용자는 IP 단위로 요청량을 계산합니다.
+    if g.user is not None:
+        actor_key = f"user:{int(g.user['id'])}"
+        if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
+            limit = config.USER_MUTATIONS_PER_MINUTE
+            bucket = "mutate"
+        elif request.path.startswith('/api/'):
+            limit = config.USER_API_REQUESTS_PER_MINUTE
+            bucket = "api"
+        else:
+            limit = config.USER_REQUESTS_PER_MINUTE
+            bucket = "page"
+    else:
+        actor_key = f"ip:{ip}"
+        if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
+            limit = config.ANON_MUTATIONS_PER_MINUTE
+            bucket = "mutate"
+        elif request.path.startswith('/api/'):
+            limit = config.ANON_API_REQUESTS_PER_MINUTE
+            bucket = "api"
+        else:
+            limit = config.ANON_REQUESTS_PER_MINUTE
+            bucket = "page"
+
+    if not _rate_limit_allowed(f"{actor_key}:{bucket}", limit):
+        if g.user is not None:
+            _record_security_event(db, 'rate_limit', f'{request.method} {request.path}', g.user, ip)
+        message = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
+        if request.path.startswith('/api/'):
+            return jsonify({"success": False, "message": message}), 429
+        return message, 429
+
+    # 모든 상태 변경 요청은 CSRF 토큰을 검증합니다.
+    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
+        supplied = request.headers.get('X-CSRFToken') or request.form.get('csrf_token')
+        expected = _csrf_token()
+        if not supplied or not secrets.compare_digest(str(supplied), str(expected)):
+            # CSRF 실패는 세션 만료/오래된 탭에서도 발생할 수 있으므로 기록은 하되
+            # 자동 블랙리스트 사유로는 사용하지 않습니다.
+            if g.user is not None:
+                _record_security_event(db, 'invalid_csrf', f'{request.method} {request.path}', g.user, ip)
+            message = "보안 토큰이 만료되었거나 유효하지 않습니다. 페이지를 새로고침한 후 다시 시도해주세요."
+            if request.path.startswith('/api/'):
+                return jsonify({"success": False, "message": message}), 403
+            flash(message, "error")
+            return redirect(request.referrer or url_for('main'))
 
 @app.after_request
 def apply_security_headers(response):
@@ -215,11 +268,29 @@ def apply_security_headers(response):
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    response.headers.setdefault("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.supabase.co; connect-src 'self' https://*.supabase.co; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'")
-    if response.status_code in (401,403,429) and getattr(g, 'user', None) is not None:
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https://*.supabase.co; connect-src 'self' https://*.supabase.co; "
+        "object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'",
+    )
+
+    # 관리자 API에 대한 권한 거부만 고위험 이벤트로 별도 기록합니다.
+    # 일반 403(예: 글 권한/CSRF)이나 429는 여기서 중복 기록하지 않습니다.
+    if (
+        response.status_code in (401, 403)
+        and request.path.startswith('/api/admin')
+        and getattr(g, 'user', None) is not None
+        and not getattr(g, 'security_event_recorded', False)
+    ):
         db = database.get_db()
-        event_type = 'rate_limit' if response.status_code == 429 else 'unauthorized_admin' if request.path.startswith('/api/admin') else 'blocked_method'
-        locked = _record_security_event(db, event_type, f'{response.status_code} {request.path}', g.user, _client_ip())
+        locked = _record_security_event(
+            db,
+            'unauthorized_admin',
+            f'{response.status_code} {request.path}',
+            g.user,
+            _client_ip(),
+        )
         if locked:
             session.clear()
             g.user = None
