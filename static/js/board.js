@@ -138,3 +138,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadMyClasses();
 });
+
+// 댓글 삭제는 외부 스크립트에서 확인해 CSP를 유지합니다.
+document.addEventListener('submit', (event) => {
+  const form = event.target.closest?.('.comment-delete-form');
+  if (!form) return;
+  if (!window.confirm('이 댓글을 삭제할까요?')) event.preventDefault();
+});

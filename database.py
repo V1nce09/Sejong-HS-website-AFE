@@ -132,6 +132,17 @@ def init_db():
     )
     """)
     cur.execute("""
+    CREATE TABLE IF NOT EXISTS comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER NOT NULL,
+        author_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (post_id) REFERENCES posts (id) ON DELETE CASCADE,
+        FOREIGN KEY (author_id) REFERENCES users (id)
+    )
+    """)
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS login_attempts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip TEXT NOT NULL,
@@ -204,6 +215,8 @@ def init_db():
     cur.execute("CREATE INDEX IF NOT EXISTS idx_post_images_post ON post_images (post_id, sort_order)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_post_reads_user ON post_reads (user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_post_reads_post ON post_reads (post_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_post ON comments (post_id, id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_comments_author ON comments (author_id, id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_login_attempts_key ON login_attempts (ip, userid)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_security_events_created ON security_events (created_at DESC)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_security_events_user ON security_events (user_id, created_at DESC)")

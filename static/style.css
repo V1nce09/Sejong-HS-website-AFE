@@ -5183,3 +5183,84 @@ a.primary-button {
   justify-content: center;
   text-decoration: none;
 }
+
+
+/* Comments */
+.comments-section {
+  margin-top: 20px;
+  background: #fff;
+  border: 1px solid #d9dde4;
+  border-radius: 0;
+  padding: 20px;
+}
+.comments-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e7e9ed;
+}
+.comments-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: #232a35;
+}
+.comments-heading > span { color: #69727f; font-size: 12px; font-weight: 700; }
+.comment-form {
+  display: grid;
+  gap: 8px;
+  padding: 16px 0;
+  border-bottom: 1px solid #e7e9ed;
+}
+.comment-form label { color: #46505e; font-size: 12px; font-weight: 700; }
+.comment-form textarea {
+  width: 100%;
+  min-height: 76px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  border: 1px solid #cfd4dc;
+  border-radius: 0;
+  background: #fff;
+  color: #202632;
+  font: inherit;
+  line-height: 1.55;
+}
+.comment-form textarea:focus { outline: 2px solid #9ba8b8; outline-offset: -2px; }
+.comment-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.comment-form-actions > span { color: #858d98; font-size: 11px; }
+.comment-form-actions .primary-button { border-radius: 0 !important; }
+.comment-list { display: grid; }
+.comment-item { padding: 15px 0; border-bottom: 1px solid #eceef1; }
+.comment-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.comment-meta { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 7px; }
+.comment-meta > div { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.comment-meta strong { color: #283140; font-size: 13px; font-weight: 800; }
+.comment-meta span { color: #586474; font-size: 10px; font-weight: 700; }
+.comment-meta time { color: #8a929e; font-size: 10px; }
+.comment-content {
+  color: #3f4855;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.comment-delete-form { margin: 0; }
+.comment-delete-button {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #8a4545;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.comments-empty { margin: 16px 0 0; color: #838b96; font-size: 12px; }
+@media (max-width: 760px) {
+  .comments-section { margin-top: 12px; padding: 15px; }
+  .comment-form-actions { align-items: flex-end; }
+  .comment-form-actions .primary-button { min-width: 72px; }
+}

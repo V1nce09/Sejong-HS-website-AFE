@@ -19,6 +19,16 @@
 <body>
 <div class="container">
 
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-messages">
+          {% for category, message in messages %}
+            <div class="flash-message {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
     {% if session.get('user') %}
     <!-- 프로필: 이름 + 학번(또는 관리자) + 동작 메뉴 -->
     <div class="profile-mini" role="note" aria-label="사용자 프로필">
@@ -109,6 +119,50 @@
             </div>
             {% endif %}
         </div>
+
+        <section id="comments" class="comments-section" aria-labelledby="comments-title">
+          <div class="comments-heading">
+            <h2 id="comments-title">댓글</h2>
+            <span>{{ comments|length }}</span>
+          </div>
+
+          {% if g.user %}
+          <form class="comment-form" method="POST" action="{{ url_for('add_comment', post_id=post.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="comment-content">댓글 작성</label>
+            <textarea id="comment-content" name="content" maxlength="1000" rows="3" placeholder="댓글을 입력하세요" required></textarea>
+            <div class="comment-form-actions">
+              <span>최대 1000자</span>
+              <button type="submit" class="primary-button">등록</button>
+            </div>
+          </form>
+          {% endif %}
+
+          <div class="comment-list">
+            {% if comments %}
+              {% for comment in comments %}
+              <article class="comment-item">
+                <div class="comment-meta">
+                  <div>
+                    <strong>{{ comment.author_name }}</strong>
+                    {% if comment.author_userid == config['ADMIN_ID'] %}<span>관리자</span>{% elif comment.author_is_teacher %}<span>선생님</span>{% endif %}
+                    <time>{{ comment.created_at[:16].replace('T', ' ') }}</time>
+                  </div>
+                  {% if g.user and (is_admin or comment.author_id == g.user['id']) %}
+                  <form method="POST" action="{{ url_for('delete_comment', comment_id=comment.id) }}" class="comment-delete-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="comment-delete-button">삭제</button>
+                  </form>
+                  {% endif %}
+                </div>
+                <div class="comment-content">{{ comment.content }}</div>
+              </article>
+              {% endfor %}
+            {% else %}
+              <p class="comments-empty">아직 댓글이 없습니다.</p>
+            {% endif %}
+          </div>
+        </section>
       </div>
     </main>
 

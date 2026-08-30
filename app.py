@@ -1144,6 +1144,13 @@ def post_detail(grade, classroom, post_id):
     sanitized_content = bleach.clean(post["content"])
     formatted_content = sanitized_content.replace("\n", "<br>")
     attached_images = _get_post_images(db, post_id)
+    comments = db.execute(
+        "SELECT c.id, c.post_id, c.author_id, c.content, c.created_at, "
+        "u.userid AS author_userid, u.name AS author_name, COALESCE(u.is_teacher, 0) AS author_is_teacher "
+        "FROM comments c JOIN users u ON u.id = c.author_id "
+        "WHERE c.post_id = ? ORDER BY c.id ASC",
+        (post_id,),
+    ).fetchall()
     can_edit = bool(
         g.user and (
             _is_admin(g.user)
@@ -1159,10 +1166,89 @@ def post_detail(grade, classroom, post_id):
         post=post,
         formatted_content=formatted_content,
         attached_images=attached_images,
+        comments=comments,
+        is_admin=is_admin,
         can_pin=is_staff,
         can_edit=can_edit,
         can_delete=bool(g.user and (_is_admin(g.user) or int(post["author_id"]) == int(g.user["id"]))),
         cache_buster=int(time.time()),
+    )
+
+
+
+@app.route("/posts/<int:post_id>/comments", methods=["POST"])
+def add_comment(post_id):
+    if g.user is None:
+        flash("로그인이 필요합니다.", "error")
+        return redirect(url_for("login"))
+
+    db = database.get_db()
+    post = db.execute(
+        "SELECT id, grade, classroom FROM posts WHERE id = ?",
+        (post_id,),
+    ).fetchone()
+    if post is None:
+        return "게시물을 찾을 수 없습니다.", 404
+    if not _can_access_stored_board(db, g.user, post["grade"], post["classroom"]):
+        return "댓글을 작성할 권한이 없습니다.", 403
+
+    content = request.form.get("content", "").strip()
+    route_grade, route_classroom, _ = _post_board_route(post["grade"], post["classroom"])
+    target_url = url_for(
+        "post_detail", grade=route_grade, classroom=route_classroom, post_id=post_id
+    ) + "#comments"
+
+    if not content:
+        flash("댓글 내용을 입력해주세요.", "error")
+        return redirect(target_url)
+    if len(content) > 1000:
+        flash("댓글은 1000자 이하로 작성해주세요.", "error")
+        return redirect(target_url)
+
+    db.execute(
+        "INSERT INTO comments (post_id, author_id, content, created_at) VALUES (?, ?, ?, ?)",
+        (post_id, g.user["id"], content, datetime.now().isoformat()),
+    )
+    db.commit()
+    return redirect(target_url)
+
+
+@app.route("/comments/<int:comment_id>/delete", methods=["POST"])
+def delete_comment(comment_id):
+    if g.user is None:
+        flash("로그인이 필요합니다.", "error")
+        return redirect(url_for("login"))
+
+    db = database.get_db()
+    comment = db.execute(
+        "SELECT c.id, c.post_id, c.author_id, p.grade, p.classroom "
+        "FROM comments c JOIN posts p ON p.id = c.post_id WHERE c.id = ?",
+        (comment_id,),
+    ).fetchone()
+    if comment is None:
+        return "댓글을 찾을 수 없습니다.", 404
+
+    if not (_is_admin(g.user) or int(comment["author_id"]) == int(g.user["id"])):
+        return "이 댓글을 삭제할 권한이 없습니다.", 403
+
+    if not _can_access_stored_board(db, g.user, comment["grade"], comment["classroom"]):
+        return "이 댓글을 삭제할 권한이 없습니다.", 403
+
+    if _is_admin(g.user) and int(comment["author_id"]) != int(g.user["id"]):
+        _audit_admin_action(
+            db, "댓글 삭제", "comment", comment_id, f"게시글 #{comment['post_id']}의 댓글 삭제"
+        )
+    db.execute("DELETE FROM comments WHERE id = ?", (comment_id,))
+    db.commit()
+
+    route_grade, route_classroom, _ = _post_board_route(comment["grade"], comment["classroom"])
+    return redirect(
+        url_for(
+            "post_detail",
+            grade=route_grade,
+            classroom=route_classroom,
+            post_id=comment["post_id"],
+        ) + "#comments"
     )
 
 
@@ -1192,6 +1278,7 @@ def delete_post(post_id):
             f"{route_grade}/{route_classroom} · {post['title']}",
         )
     db.execute("DELETE FROM post_reads WHERE post_id = ?", (post_id,))
+    db.execute("DELETE FROM comments WHERE post_id = ?", (post_id,))
     db.execute("DELETE FROM post_images WHERE post_id = ?", (post_id,))
     db.execute("DELETE FROM posts WHERE id = ?", (post_id,))
     db.commit()
@@ -2058,9 +2145,11 @@ def admin_delete_user(user_id):
 
         # 읽음 기록은 삭제 대상 사용자의 기록뿐 아니라 삭제될 게시글을 가리키는 다른 사용자의 기록도 제거합니다.
         db.execute(f"DELETE FROM post_reads WHERE post_id IN ({placeholders})", post_ids)
+        db.execute(f"DELETE FROM comments WHERE post_id IN ({placeholders})", post_ids)
         db.execute(f"DELETE FROM post_images WHERE post_id IN ({placeholders})", post_ids)
         db.execute(f"DELETE FROM posts WHERE id IN ({placeholders})", post_ids)
 
+    db.execute("DELETE FROM comments WHERE author_id = ?", (user_id,))
     db.execute("DELETE FROM post_reads WHERE user_id = ?", (user_id,))
     db.execute("DELETE FROM custom_timetable WHERE user_id = ?", (user_id,))
     db.execute("DELETE FROM timetable_profiles WHERE user_id = ?", (user_id,))
